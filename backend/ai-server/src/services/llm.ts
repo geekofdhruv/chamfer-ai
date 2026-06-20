@@ -47,13 +47,25 @@ export function classifyError(error: string): { category: string; hint: string }
   if (e.includes('syntaxerror') || e.includes('indentationerror')) {
     return { category: 'SYNTAX', hint: 'Python syntax error. Check indentation, missing colons, unclosed parentheses.' };
   }
-  if (e.includes('typeerror') || e.includes('argument')) {
-    return { category: 'TYPE_ERROR', hint: 'Wrong argument types. Check method signatures — e.g. .hole(diameter) takes a float, .rect(width, height) takes two floats.' };
+  if (e.includes('typeerror') || e.includes('argument') || e.includes('takes') || e.includes('must be an iterable')) {
+    return { category: 'TYPE_ERROR', hint: 'Wrong argument types. You passed a single float where a tuple/list is expected. Common causes: .rotate() needs (start, end, angle) as (tuple, tuple, float), .translate() needs (x, y, z) as a single tuple, .add() keyword args only. Check every method call signature.' };
   }
   if (e.includes('selector') || e.includes('no faces') || e.includes('no edges')) {
     return { category: 'SELECTOR', hint: 'The selector found no matching faces/edges. Try different selectors: ">Z" (top), "<Z" (bottom), "|Z" (vertical), "%CIRCLE" (circular edges).' };
   }
-  return { category: 'UNKNOWN', hint: 'An unexpected error occurred. Review the code carefully and try a simpler approach.' };
+  if (e.includes('wire') || e.includes('brep') || e.includes('topods') || e.includes('standard_failure')) {
+    return { category: 'WIRE_TOPOLOGY', hint: 'The 2D profile has topology issues — likely self-intersecting wires or an unclosed profile. Ensure .close() is called before .extrude(). For complex profiles, decompose into simpler shapes and use boolean operations.' };
+  }
+  if (e.includes('assert') || e.includes('runtimeerror')) {
+    return { category: 'RUNTIME', hint: 'CadQuery internal assertion failed. This usually means invalid geometry operations — check that extrude values are positive, hole diameters are smaller than the face, and boolean operands actually overlap.' };
+  }
+  if (e.includes('zerodivision') || e.includes('division by zero') || e.includes('math domain')) {
+    return { category: 'MATH_ERROR', hint: 'Math domain error — likely caused by sqrt of negative, log of zero, or division by zero in trigonometric calculations. Check your math expressions and ensure input values are valid.' };
+  }
+  if (e.includes('import') || e.includes('modulenotfounderror')) {
+    return { category: 'IMPORT_ERROR', hint: 'Missing import. Only cadquery and math are available. Do not import any other modules.' };
+  }
+  return { category: 'UNKNOWN', hint: 'An unexpected error occurred. Simplify the geometry — use basic primitives (box, cylinder) and boolean operations instead of complex profiles.' };
 }
 
 // ─── Validation Feedback ─────────────────────────────────────────────

@@ -3,10 +3,11 @@ import { OrbitControls, Grid, Environment } from '@react-three/drei';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import { Plus, PanelLeft, ArrowUp, Loader2, Download, HelpCircle, Brain } from 'lucide-react';
+import { Plus, PanelLeft, ArrowUp, Loader2, Download, HelpCircle, Brain, Copy, Check } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ProgressiveFluxLoader } from '@/components/ui/progressive-flux-loader';
 import { LampContainer } from '@/components/ui/lamp';
+import { GlowCard } from '@/components/ui/spotlight-card';
 
 const API_URL = '';
 
@@ -241,20 +242,48 @@ function ProviderSelector({ selected, onSelect }: { selected: string; onSelect: 
 function ParameterPanel({ parameters, values, onChange }: { parameters: Parameter[]; values: Record<string, number>; onChange: (name: string, value: number) => void }) {
   if (parameters.length === 0) return null;
   return (
-    <div className="space-y-3">
-      {parameters.map(p => (
-        <div key={p.name} className="rounded-lg bg-adam-bg-dark p-3 border border-adam-neutral-700">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs text-adam-text-primary font-medium">{p.name}</span>
-            <span className="text-xs text-adam-blue font-mono bg-adam-blue/10 px-2 py-0.5 rounded">{(values[p.name] ?? p.default).toFixed(1)}</span>
+    <div className="space-y-2">
+      {parameters.map(p => {
+        const val = values[p.name] ?? p.default;
+        const pct = ((val - p.min) / (p.max - p.min)) * 100;
+        return (
+          <div key={p.name} className="group rounded-lg bg-adam-bg-dark border border-adam-neutral-700 hover:border-adam-neutral-500 transition-colors">
+            <div className="px-3 pt-2.5 pb-1">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-adam-text-secondary font-medium tracking-wide">{p.name.replace(/_/g, ' ')}</span>
+                <span className="text-[11px] text-adam-blue font-mono font-semibold tabular-nums">{val.toFixed(1)}</span>
+              </div>
+              <div className="relative h-5 flex items-center">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full h-1 rounded-full bg-adam-neutral-700 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-adam-blue/80 to-adam-blue transition-all duration-75"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min={p.min}
+                  max={p.max}
+                  step={p.step}
+                  value={val}
+                  onChange={e => onChange(p.name, parseFloat(e.target.value))}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <div
+                  className="absolute w-3.5 h-3.5 rounded-full bg-white shadow-md border-2 border-adam-blue pointer-events-none transition-transform group-hover:scale-110"
+                  style={{ left: `calc(${pct}% - 7px)` }}
+                />
+              </div>
+            </div>
+            <div className="flex justify-between px-3 pb-2 pt-0.5">
+              <span className="text-[9px] text-adam-text-tertiary font-mono">{p.min}</span>
+              <span className="text-[9px] text-adam-text-tertiary font-mono">{p.max}</span>
+            </div>
           </div>
-          <input type="range" min={p.min} max={p.max} step={p.step} value={values[p.name] ?? p.default}
-            onChange={e => onChange(p.name, parseFloat(e.target.value))} className="w-full" />
-          <div className="flex justify-between text-[10px] text-adam-text-tertiary mt-1">
-            <span>{p.min}</span><span>{p.max}</span>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -350,20 +379,26 @@ export default function App() {
   const [stlObjectUrl, setStlObjectUrl] = useState<string | null>(null);
   const [stepBase64, setStepBase64] = useState<string | undefined>(undefined);
   const [stlBase64, setStlBase64] = useState<string | undefined>(undefined);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [streamReasoning, setStreamReasoning] = useState('');
   const [isParamUpdating, setIsParamUpdating] = useState(false);
   const [paramUpdateKey, setParamUpdateKey] = useState(0);
   const [reasoningEnabled, setReasoningEnabled] = useState(true);
+  const [exportFilename, setExportFilename] = useState('model');
   const paramDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const reasoningBufferRef = useRef('');
   const reasoningRafRef = useRef<number | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paramValuesRef = useRef(paramValues);
+  const [paramError, setParamError] = useState<string | null>(null);
 
   useEffect(() => { return () => { if (stlObjectUrl) URL.revokeObjectURL(stlObjectUrl); }; }, [stlObjectUrl]);
+  useEffect(() => { paramValuesRef.current = paramValues; }, [paramValues]);
 
   const scrollToBottom = useCallback(() => {
     const el = chatContainerRef.current;
@@ -470,33 +505,48 @@ export default function App() {
   }, [handleGenerate, messages]);
 
   const handleParamChange = useCallback((name: string, value: number) => {
-    const newVals = { ...paramValues, [name]: value };
+    const newVals = { ...paramValuesRef.current, [name]: value };
     setParamValues(newVals);
+    paramValuesRef.current = newVals;
+    setParamError(null);
     if (paramDebounceRef.current) clearTimeout(paramDebounceRef.current);
     paramDebounceRef.current = setTimeout(async () => {
       setIsParamUpdating(true);
       try {
         const res = await fetch(`${API_URL}/api/update-params`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: currentCode, params: newVals }) });
         const data = await res.json();
-        if (data.success && data.stlBase64 && data.hasStl) {
+        console.log('[PARAMS] Update response:', { success: data.success, hasStl: data.hasStl, hasStep: data.hasStep, error: data.error });
+        if (!data.success) {
+          setParamError(data.error || 'Update failed');
+          return;
+        }
+        if (data.stlBase64) {
           const bytes = Uint8Array.from(atob(data.stlBase64), c => c.charCodeAt(0));
           const blob = new Blob([bytes], { type: 'application/octet-stream' });
           const url = URL.createObjectURL(blob);
           if (stlObjectUrl) URL.revokeObjectURL(stlObjectUrl);
           setStlObjectUrl(url); setStlUrl(url);
-          setStlBase64(data.stlBase64); setStepBase64(data.stepBase64);
-          setParamUpdateKey(k => k + 1);
+          setStlBase64(data.stlBase64);
         }
-      } catch (e) { console.error('Param update failed:', e); }
+        if (data.stepBase64) setStepBase64(data.stepBase64);
+        if (data.parameters?.length) {
+          setParameters(data.parameters);
+          const vals: Record<string, number> = {};
+          data.parameters.forEach((p: Parameter) => { vals[p.name] = newVals[p.name] ?? p.default; });
+          setParamValues(prev => ({ ...prev, ...vals }));
+        }
+        setParamUpdateKey(k => k + 1);
+      } catch (e) { console.error('Param update failed:', e); setParamError(String(e)); }
       finally { setIsParamUpdating(false); }
-    }, 500);
-  }, [paramValues, currentCode, stlObjectUrl]);
+    }, 300);
+  }, [currentCode, stlObjectUrl]);
 
   const handleNewTask = () => {
     setMessages([]); setParameters([]); setParamValues({}); setCurrentCode('');
     setStlUrl(null); setStlBase64(undefined); setStepBase64(undefined);
     if (stlObjectUrl) URL.revokeObjectURL(stlObjectUrl);
     setStlObjectUrl(null); setPrompt(''); setStreamReasoning('');
+    setExportFilename('model'); setParamError(null);
     reasoningBufferRef.current = '';
     if (reasoningRafRef.current) { cancelAnimationFrame(reasoningRafRef.current); reasoningRafRef.current = null; }
   };
@@ -528,24 +578,26 @@ export default function App() {
                 <h1 className="mb-8 text-center text-2xl font-medium text-adam-text-primary md:text-3xl">
                   What can VibeCAD help you build today?
                 </h1>
-                <div className="w-full max-w-2xl space-y-4 pb-12">
-                  <ChatInput
-                    prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate}
-                    isGenerating={isGenerating} isFocused={isFocused} setIsFocused={setIsFocused}
-                    provider={provider} setProvider={setProvider}
-                    placeholder="Start building with VibeCAD..."
-                    reasoningEnabled={reasoningEnabled} setReasoningEnabled={setReasoningEnabled}
-                    showAnimatedPlaceholder
-                  />
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
-                      Powered by <span className="font-medium text-adam-blue">0G Compute</span>
-                    </span>
-                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
-                      CadQuery <span className="font-medium text-adam-blue">Python</span>
-                    </span>
+                <GlowCard glowColor="blue" customSize className="w-full max-w-2xl">
+                  <div className="space-y-4">
+                    <ChatInput
+                      prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate}
+                      isGenerating={isGenerating} isFocused={isFocused} setIsFocused={setIsFocused}
+                      provider={provider} setProvider={setProvider}
+                      placeholder="Start building with VibeCAD..."
+                      reasoningEnabled={reasoningEnabled} setReasoningEnabled={setReasoningEnabled}
+                      showAnimatedPlaceholder
+                    />
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
+                        Powered by <span className="font-medium text-adam-blue">0G Compute</span>
+                      </span>
+                      <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
+                        CadQuery <span className="font-medium text-adam-blue">Python</span>
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </GlowCard>
               </LampContainer>
             ) : (
               /* ─── Editor View (3 panels) ─── */
@@ -655,50 +707,81 @@ export default function App() {
                           />
                         </div>
                       )}
+                      {paramError && (
+                        <div className="mt-2 text-[10px] text-red-400 bg-red-500/10 rounded-md px-2 py-1.5">
+                          {paramError}
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* Export Section */}
                   {(stlBase64 || stepBase64) && (
                     <div className="p-4 border-b border-adam-neutral-700">
-                      <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider mb-3">Export</h3>
-                      <div className="flex gap-2">
-                        {stlBase64 && (
-                          <button
-                            onClick={() => {
-                              const bytes = Uint8Array.from(atob(stlBase64), c => c.charCodeAt(0));
-                              const blob = new Blob([bytes], { type: 'application/octet-stream' });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a'); a.href = url; a.download = 'model.stl'; a.click();
-                              URL.revokeObjectURL(url);
-                            }}
-                            className="flex items-center gap-1.5 rounded-lg border border-adam-neutral-700 bg-adam-bg-dark px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 hover:text-adam-text-primary transition-colors flex-1 justify-center"
-                          >
-                            <Download className="h-3.5 w-3.5" /> STL
-                          </button>
-                        )}
-                        {stepBase64 && (
-                          <button
-                            onClick={() => {
-                              const bytes = Uint8Array.from(atob(stepBase64), c => c.charCodeAt(0));
-                              const blob = new Blob([bytes], { type: 'application/octet-stream' });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a'); a.href = url; a.download = 'model.step'; a.click();
-                              URL.revokeObjectURL(url);
-                            }}
-                            className="flex items-center gap-1.5 rounded-lg border border-adam-neutral-700 bg-adam-bg-dark px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 hover:text-adam-text-primary transition-colors flex-1 justify-center"
-                          >
-                            <Download className="h-3.5 w-3.5" /> STEP
-                          </button>
-                        )}
-                      </div>
+                      <GlowCard glowColor="purple" customSize className="w-full">
+                        <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider mb-3">Export</h3>
+                        <div className="mb-3">
+                          <label className="text-[10px] text-adam-text-tertiary mb-1 block">Filename</label>
+                          <input
+                            type="text"
+                            value={exportFilename}
+                            onChange={e => setExportFilename(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                            className="w-full bg-adam-bg-dark border border-adam-neutral-700 rounded-lg px-3 py-1.5 text-xs text-adam-text-primary outline-none focus:border-adam-blue transition-colors"
+                            placeholder="model"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          {stlBase64 && (
+                            <button
+                              onClick={() => {
+                                const bytes = Uint8Array.from(atob(stlBase64), c => c.charCodeAt(0));
+                                const blob = new Blob([bytes], { type: 'application/octet-stream' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a'); a.href = url; a.download = `${exportFilename || 'model'}.stl`; a.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                              className="flex items-center gap-1.5 rounded-lg border border-adam-neutral-700 bg-adam-bg-dark px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 hover:text-adam-text-primary transition-colors flex-1 justify-center"
+                            >
+                              <Download className="h-3.5 w-3.5" /> STL
+                            </button>
+                          )}
+                          {stepBase64 && (
+                            <button
+                              onClick={() => {
+                                const bytes = Uint8Array.from(atob(stepBase64), c => c.charCodeAt(0));
+                                const blob = new Blob([bytes], { type: 'application/octet-stream' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a'); a.href = url; a.download = `${exportFilename || 'model'}.step`; a.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                              className="flex items-center gap-1.5 rounded-lg border border-adam-neutral-700 bg-adam-bg-dark px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 hover:text-adam-text-primary transition-colors flex-1 justify-center"
+                            >
+                              <Download className="h-3.5 w-3.5" /> STEP
+                            </button>
+                          )}
+                        </div>
+                      </GlowCard>
                     </div>
                   )}
 
                   {/* Code Section */}
                   {currentCode && (
                     <div className="p-4 flex-1 min-h-0">
-                      <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider mb-3">Generated Code</h3>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider">Generated Code</h3>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(currentCode);
+                            setCopied(true);
+                            if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
+                            copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-adam-text-tertiary hover:text-adam-text-secondary hover:bg-adam-neutral-800 transition-colors"
+                        >
+                          {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                          {copied ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
                       <pre className="text-[11px] text-adam-text-secondary bg-adam-bg-dark rounded-lg p-3 overflow-auto max-h-[calc(100vh-400px)] font-mono leading-relaxed border border-adam-neutral-700">
                         {currentCode}
                       </pre>

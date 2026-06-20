@@ -89,10 +89,10 @@ r = body1.union(body2)
 r = body1.cut(body2)
 r = body1.intersect(body2)
 
-### Transformations
-r = r.translate((x, y, z))
-r = r.rotate((0,0,0), (0,0,1), 90)  # rotate 90° around Z
-r = r.mirror("XZ")                    # mirror across XZ plane
+### Transformations — ALWAYS use tuples, never individual floats
+r = r.translate((x, y, z))                    # pass ONE tuple
+r = r.rotate((0, 0, 0), (0, 0, 1), 90)       # rotate(startPoint_tuple, endPoint_tuple, angle_float)
+r = r.mirror("XZ")                            # mirror across plane
 
 ### Patterns
 # Rectangular array of holes
@@ -104,7 +104,7 @@ r = r.faces(">Z").workplane().polarArray(radius, start_angle, total_angle, count
 ### Revolve
 r = cq.Workplane("XY").circle(20).extrude(5)  # base disk
 profile = cq.Workplane("XZ").moveTo(25, 0).lineTo(25, 10).lineTo(35, 10).close()
-r = profile.revolve(0, (0,0,0), (0,1,0))
+r = profile.revolve(360, (0,0,0), (0,1,0))
 
 ### Loft
 r = cq.Workplane("XY").circle(10).workplane(offset=20).circle(5).loft()
@@ -130,6 +130,9 @@ asm.save("/tmp/output.glb", "GLTF")
 8. For circular edges, use %CIRCLE selector, not direction selectors (>Z won't find arcs)
 9. .close() is required before .extrude() when drawing custom profiles with lineTo/arc
 10. When using .pushPoints(), follow with .hole() — don't create separate wires
+11. .translate() takes ONE tuple: .translate((x, y, z)) — NOT three separate floats
+12. .rotate() takes (start_point, end_point, angle): .rotate((0,0,0), (0,0,1), 90) — NOT individual floats
+13. NEVER pass a single float where a tuple is expected — this causes "compound() must be an iterable" errors
 
 ## COMMON ERRORS AND FIXES
 
@@ -141,6 +144,7 @@ asm.save("/tmp/output.glb", "GLTF")
 | No suitable edges for fillet | Edge too small for the radius | Reduce radius or skip fillet |
 | 'Workplane' has no attribute 'scale' | .scale() doesn't exist on Workplane | Multiply coordinates directly |
 | Cannot compound | Mixed 2D and 3D objects in union | Extrude 2D profiles first |
+| compound() must be an iterable | Passed a float where a tuple is expected | Use tuples: .translate((x,y,z)), .rotate((0,0,0),(0,0,1),90) |
 | ValueError: cannot convert | Invalid selector string | Use ">Z", "<Z", "|Z", "%CIRCLE" |
 
 ## ENGINEERING BEST PRACTICES
@@ -153,4 +157,36 @@ asm.save("/tmp/output.glb", "GLTF")
 - When unsure about a complex shape, decompose into simple primitives and boolean operations
 - Fillet radius must be less than half the smallest adjacent face dimension
 - Chamfer length must be less than the edge length
-- For multi-part assemblies, use cq.Assembly with named parts and colors`;
+- For multi-part assemblies, use cq.Assembly with named parts and colors
+
+## CUSTOM PROFILES & GEARS
+
+For custom 2D profiles (gears, cams, brackets with complex outlines):
+
+\`\`\`python
+import cadquery as cq
+import math
+
+# Build profile as list of (x, y) points
+points = []
+for i in range(num_points):
+    angle = i * 2 * math.pi / num_points
+    r = ...  # compute radius at this angle
+    points.append((r * math.cos(angle), r * math.sin(angle)))
+
+# Create the wire — MUST close before extrude
+profile = cq.Workplane("XY")
+for pt in points:
+    profile = profile.lineTo(pt[0], pt[1])
+profile = profile.close()  # ← CRITICAL: close the wire
+
+# Extrude to solid
+r = profile.extrude(face_width)
+\`\`\`
+
+KEY RULES for custom profiles:
+1. ALWAYS call .close() after the last lineTo/arc to seal the wire
+2. NEVER use .lineTo() without a subsequent .close() before .extrude()
+3. For gears: build tooth outline with lineTo points, NOT with arc segments
+4. Keep profiles simple — if a complex profile fails, break it into union of simpler shapes
+5. For involute gears: pre-compute points with math, then use lineTo — do NOT try to use CadQuery's arc methods for tooth profiles`;

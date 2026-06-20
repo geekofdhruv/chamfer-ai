@@ -21,12 +21,12 @@ def extract_parameters(code: str) -> list[dict[str, Any]]:
 
 
 def substitute_params(code: str, params: dict[str, float]) -> str:
-    """Replace top-level variable assignments with new parameter values."""
+    """Replace top-level variable assignments with new parameter values, preserving comments."""
     result = code
     for name, value in params.items():
         result = re.sub(
-            rf'^{name}\s*=\s*.*',
-            f'{name} = {value}',
+            rf'^({name}\s*=\s*)([\d.]+)(\s*#.*)?$',
+            rf'\g<1>{value}\3',
             result,
             flags=re.MULTILINE,
         )

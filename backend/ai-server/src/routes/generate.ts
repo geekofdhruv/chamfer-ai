@@ -120,10 +120,11 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
 
       if (!cadResult.success) {
         // ── Execution error — classify and feed back ──
-        const { category, hint } = classifyError(cadResult.error || '');
-        lastError = cadResult.error || 'Unknown execution error';
-        console.log(`[ROUTE] Error category: ${category}`);
-        sendSSE(res, 'retry', { reason: lastError, category, hint });
+        const errorMsg = cadResult.error || 'Unknown execution error';
+        const { category, hint } = classifyError(errorMsg);
+        lastError = errorMsg;
+        console.log(`[ROUTE] Error [${category}]: ${errorMsg}`);
+        sendSSE(res, 'retry', { reason: errorMsg, category, hint });
         continue;
       }
 
@@ -199,9 +200,15 @@ export async function handleUpdateParams(req: Request, res: Response): Promise<v
     if (!code) { res.status(400).json({ error: 'Code is required' }); return; }
     if (!params) { res.status(400).json({ error: 'Params are required' }); return; }
 
+    console.log(`[PARAMS] Updating with params: ${JSON.stringify(params)}`);
     const cadResult = await callCadServer('/update-params', { code, params }) as CadResult;
+    console.log(`[PARAMS] CAD result: success=${cadResult.success}, has_stl=${cadResult.has_stl}, has_step=${cadResult.has_step}`);
 
-    if (!cadResult.success) { res.status(500).json({ error: cadResult.error }); return; }
+    if (!cadResult.success) {
+      console.log(`[PARAMS] Error: ${cadResult.error}`);
+      res.status(500).json({ success: false, error: cadResult.error });
+      return;
+    }
 
     res.json({
       success: true,
@@ -212,7 +219,8 @@ export async function handleUpdateParams(req: Request, res: Response): Promise<v
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    res.status(500).json({ error: msg });
+    console.error(`[PARAMS] Exception: ${msg}`);
+    res.status(500).json({ success: false, error: msg });
   }
 }
 
