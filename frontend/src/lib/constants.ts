@@ -3,8 +3,8 @@ import type { Provider } from '@/types';
 export const API_URL = '';
 
 export const PROVIDERS: Provider[] = [
-  { id: 'mimo-flash', name: 'Flash', desc: 'Fast' },
-  { id: 'mimo-pro', name: 'Pro', desc: 'Quality' },
+  { id: 'mimo', name: 'MiMo', desc: '310B (15B active)' },
+  { id: 'mimo-pro', name: 'Pro', desc: '1T (42B active)' },
   { id: '0g', name: '0G', desc: 'Decentralized' },
 ];
 

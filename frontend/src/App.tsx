@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { PanelLeft } from 'lucide-react';
-import type { Parameter, Message } from '@/types';
+import { PanelLeft, Eye } from 'lucide-react';
+import type { Parameter, Message, InspectionData, ClarificationOption, WorkflowStep } from '@/types';
 import { API_URL } from '@/lib/constants';
 
 // Components
@@ -9,9 +9,14 @@ import { PreviewPanel } from '@/components/layout/PreviewPanel';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { StreamingMessage } from '@/components/chat/StreamingMessage';
 import { ClarificationMessage } from '@/components/chat/ClarificationMessage';
+import { ClarificationAnswers } from '@/components/chat/ClarificationAnswers';
+import { WorkflowTimeline } from '@/components/chat/WorkflowTimeline';
+import { DimViews } from '@/components/chat/DimViews';
 import { ParameterPanel } from '@/components/cad/ParameterPanel';
 import { ExportSection } from '@/components/cad/ExportSection';
 import { CodeSection } from '@/components/cad/CodeSection';
+import { SnapshotGallery } from '@/components/cad/SnapshotGallery';
+import { InspectionPanel } from '@/components/cad/InspectionPanel';
 import { LampContainer } from '@/components/ui/lamp';
 import { GlowCard } from '@/components/ui/spotlight-card';
 import { ProgressiveFluxLoader } from '@/components/ui/progressive-flux-loader';
@@ -28,7 +33,7 @@ export default function App() {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [provider, setProvider] = useState('mimo-flash');
+  const [provider, setProvider] = useState('mimo');
   const [parameters, setParameters] = useState<Parameter[]>([]);
   const [currentCode, setCurrentCode] = useState('');
   const [stlUrl, setStlUrl] = useState<string | null>(null);
@@ -40,10 +45,14 @@ export default function App() {
   const [streamReasoning, setStreamReasoning] = useState('');
   const [reasoningEnabled, setReasoningEnabled] = useState(true);
   const [exportFilename, setExportFilename] = useState('model');
+  const [snapshots, setSnapshots] = useState<Record<string, string>>({});
+  const [dimViews, setDimViews] = useState<Record<string, string>>({});
+  const [inspection, setInspection] = useState<InspectionData | null>(null);
 
   // Refs for streaming
   const reasoningBufferRef = useRef('');
   const reasoningRafRef = useRef<number | null>(null);
+  const assistantMessageIdRef = useRef<number | null>(null);
 
   // Hooks
   const { chatEndRef, chatContainerRef, handleScroll } = useAutoScroll([messages, streamReasoning]);
@@ -59,6 +68,9 @@ export default function App() {
     onStlBase64Update: setStlBase64,
     onRevokeUrl: URL.revokeObjectURL,
     onParametersUpdate: setParameters,
+    onSnapshotsUpdate: setSnapshots,
+    onDimViewsUpdate: setDimViews,
+    onInspectionUpdate: setInspection,
   });
 
   // Cleanup
@@ -71,11 +83,17 @@ export default function App() {
     const activePrompt = overridePrompt ?? prompt;
     if (!activePrompt.trim() || isGenerating) return;
 
+    const isClarificationContinue = !!overridePrompt;
     const userMsg: Message = { role: 'user', content: activePrompt };
-    setMessages(prev => [...prev, userMsg]);
+    if (!isClarificationContinue) {
+      setMessages(prev => [...prev, userMsg]);
+    }
     setPrompt('');
     setIsGenerating(true);
     setStreamReasoning('');
+    setSnapshots({});
+    setDimViews({});
+    setInspection(null);
     reasoningBufferRef.current = '';
     if (reasoningRafRef.current) { cancelAnimationFrame(reasoningRafRef.current); reasoningRafRef.current = null; }
 
@@ -92,8 +110,34 @@ export default function App() {
 
       const decoder = new TextDecoder();
       let buffer = '', finalData: any = null, currentEvent = '';
-      let clarifyQuestions: string[] | null = null;
+      let clarifyQuestions: ClarificationOption[] | null = null;
       let clarifyPrompt = '';
+      let liveInspection: InspectionData | null = null;
+      let liveSnapshots: Record<string, string> = {};
+      let liveDimViews: Record<string, string> = {};
+      let visionFeedback: string | null = null;
+      let visionVerified = false;
+      let liveSteps: WorkflowStep[] = [];
+      assistantMessageIdRef.current = null;
+
+      // Add a placeholder assistant message that will accumulate steps during generation
+      setMessages(prev => {
+        assistantMessageIdRef.current = prev.length;
+        return [...prev, { role: 'assistant', content: '', provider, steps: [] }];
+      });
+
+      const updateSteps = (steps: WorkflowStep[]) => {
+        liveSteps = steps;
+        if (assistantMessageIdRef.current !== null) {
+          setMessages(prev => {
+            const next = [...prev];
+            if (next[assistantMessageIdRef.current!]) {
+              next[assistantMessageIdRef.current!] = { ...next[assistantMessageIdRef.current!], steps };
+            }
+            return next;
+          });
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -118,8 +162,62 @@ export default function App() {
               } else if (currentEvent === 'clarify') {
                 clarifyQuestions = data.questions;
                 clarifyPrompt = data.originalPrompt || userMsg.content;
+              } else if (currentEvent === 'inspection') {
+                liveInspection = data.inspection;
+                setInspection(data.inspection);
+              } else if (currentEvent === 'snapshots') {
+                liveSnapshots = { ...liveSnapshots, ...data.snapshots };
+                setSnapshots(prev => ({ ...prev, ...data.snapshots }));
+              } else if (currentEvent === 'dim-views') {
+                liveDimViews = { ...liveDimViews, ...data.dimViews };
+                console.log('[DIM-VIEWS] received', Object.keys(data.dimViews || {}));
+              } else if (currentEvent === 'vision-check') {
+                setInspection(prev => prev ? { ...prev, visionChecking: true } as any : prev);
+              } else if (currentEvent === 'vision-result') {
+                visionFeedback = data.feedback;
+                visionVerified = !data.needsFix;
+                setInspection(prev => prev ? { ...prev, visionChecking: false, visionVerified: !data.needsFix, visionFeedback: data.feedback } as any : prev);
+              } else if (currentEvent === 'step') {
+                const existingIndex = liveSteps.findIndex(s => s.id === data.id);
+                if (existingIndex >= 0) {
+                  const updated = [...liveSteps];
+                  updated[existingIndex] = {
+                    ...updated[existingIndex],
+                    status: data.status || updated[existingIndex].status,
+                    detail: data.detail ?? updated[existingIndex].detail,
+                    label: data.label || updated[existingIndex].label,
+                    icon: data.icon || updated[existingIndex].icon,
+                    timestamp: Date.now(),
+                  };
+                  updateSteps(updated);
+                } else {
+                  const newStep: WorkflowStep = {
+                    id: data.id,
+                    icon: data.icon || 'code',
+                    label: data.label || data.id,
+                    detail: data.detail || '',
+                    status: data.status || 'running',
+                    timestamp: Date.now(),
+                  };
+                  updateSteps([...liveSteps, newStep]);
+                }
+              } else if (currentEvent === 'validation-warning') {
+                if (data.inspection) {
+                  liveInspection = data.inspection;
+                  setInspection(data.inspection);
+                }
               } else if (currentEvent === 'done') {
                 finalData = data;
+                if (data.inspection) setInspection(data.inspection);
+                if (data.snapshots) setSnapshots(data.snapshots);
+                if (data.visionVerified) visionVerified = true;
+                // Safety: ensure any running steps are marked done when the final payload arrives
+                const remainingRunning = liveSteps.filter(s => s.status === 'running');
+                if (remainingRunning.length > 0) {
+                  const updated = liveSteps.map(s => s.status === 'running' ? { ...s, status: 'done' as const, detail: s.detail || 'Complete' } : s);
+                  updateSteps(updated);
+                }
+                console.log('[DONE] dimViews keys:', Object.keys(Object.keys(liveDimViews).length > 0 ? liveDimViews : (finalData.dimViews || {})));
               } else if (currentEvent === 'error') {
                 throw new Error(data.error);
               }
@@ -133,7 +231,16 @@ export default function App() {
 
       // Handle clarification
       if (clarifyQuestions && clarifyQuestions.length > 0 && !finalData) {
-        setMessages(prev => [...prev, { role: 'assistant', content: '', clarification: clarifyQuestions }]);
+        // Replace the placeholder with clarification
+        setMessages(prev => {
+          const next = [...prev];
+          if (assistantMessageIdRef.current !== null && next[assistantMessageIdRef.current]) {
+            next[assistantMessageIdRef.current] = { role: 'assistant', content: '', clarification: clarifyQuestions! };
+          } else {
+            next.push({ role: 'assistant', content: '', clarification: clarifyQuestions! });
+          }
+          return next;
+        });
         setIsGenerating(false);
         setStreamReasoning('');
         reasoningBufferRef.current = '';
@@ -143,12 +250,33 @@ export default function App() {
 
       // Handle success
       if (finalData) {
-        setMessages(prev => [...prev, {
+        const assistantMsg: Message = {
           role: 'assistant',
-          content: `Generated with ${finalData.provider || provider}`,
+          content: finalData.bestEffort
+            ? `Generated (best effort) — ${finalData.warning || 'model had issues'}`
+            : finalData.visionVerified
+            ? `Generated with ${finalData.provider || provider} (vision-verified)`
+            : `Generated with ${finalData.provider || provider}`,
           reasoning: finalData.reasoning,
           provider: finalData.provider,
-        }]);
+          bestEffort: finalData.bestEffort,
+          warning: finalData.warning,
+          inspection: finalData.inspection,
+          snapshots: finalData.snapshots,
+          dimViews: Object.keys(liveDimViews).length > 0 ? liveDimViews : (finalData.dimViews || {}),
+          visionVerified: finalData.visionVerified,
+          visionFeedback: visionFeedback || undefined,
+          steps: liveSteps,
+        };
+        setMessages(prev => {
+          const next = [...prev];
+          if (assistantMessageIdRef.current !== null && next[assistantMessageIdRef.current]) {
+            next[assistantMessageIdRef.current] = assistantMsg;
+          } else {
+            next.push(assistantMsg);
+          }
+          return next;
+        });
         if (finalData.code) setCurrentCode(finalData.code);
         if (finalData.parameters) {
           setParameters(finalData.parameters);
@@ -166,12 +294,23 @@ export default function App() {
           setStlObjectUrl(url);
           setStlUrl(url);
         }
+        if (finalData.inspection) setInspection(finalData.inspection);
+        if (finalData.snapshots) setSnapshots(finalData.snapshots);
       }
     } catch (e: any) {
       const errorMsg = e.message?.includes('Failed to fetch')
         ? 'Cannot connect to server. Make sure ai-server and cad-server are running.'
         : e.message;
-      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMsg}`, error: errorMsg }]);
+      const errorMsgObj: Message = { role: 'assistant', content: `Error: ${errorMsg}`, error: errorMsg };
+      setMessages(prev => {
+        const next = [...prev];
+        if (assistantMessageIdRef.current !== null && next[assistantMessageIdRef.current]) {
+          next[assistantMessageIdRef.current] = errorMsgObj;
+        } else {
+          next.push(errorMsgObj);
+        }
+        return next;
+      });
     } finally {
       setIsGenerating(false);
       setStreamReasoning('');
@@ -180,10 +319,13 @@ export default function App() {
     }
   }, [prompt, isGenerating, provider, messages, stlObjectUrl, reasoningEnabled, setParamValues]);
 
-  const handleClarificationSubmit = useCallback((answers: string) => {
+  const handleClarificationSubmit = useCallback((answers: string, answerList: { question: string; answer: string }[]) => {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     if (!lastUserMsg) return;
-    setMessages(prev => prev.filter(m => !m.clarification));
+    setMessages(prev => [
+      ...prev.filter(m => !m.clarification),
+      { role: 'user', content: answers, clarificationAnswers: answerList }
+    ]);
     handleGenerate(answers, lastUserMsg.content);
   }, [handleGenerate, messages]);
 
@@ -199,6 +341,9 @@ export default function App() {
     setPrompt('');
     setStreamReasoning('');
     setExportFilename('model');
+    setSnapshots({});
+    setDimViews({});
+    setInspection(null);
     resetParams();
   };
 
@@ -263,25 +408,70 @@ export default function App() {
                         msg.clarification ? (
                           <ClarificationMessage key={i} questions={msg.clarification} onSubmit={handleClarificationSubmit} />
                         ) : (
+                          (isGenerating && i === messages.length - 1 && msg.role === 'assistant' && !msg.content) ? null : (
                           <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === 'user' ? 'bg-adam-background-1' : msg.error ? 'bg-red-500/10' : 'bg-adam-background-1'}`}>
                             <div className="text-[10px] text-adam-text-tertiary mb-1 font-medium">
                               {msg.role === 'user' ? 'You' : msg.provider || 'VibeCAD'}
                             </div>
-                            <div className="text-adam-text-primary leading-relaxed">{msg.content}</div>
-                            {msg.reasoning && reasoningEnabled && (
-                              <details className="mt-2">
-                                <summary className="text-[10px] text-adam-text-tertiary cursor-pointer hover:text-adam-text-secondary">
-                                  Show reasoning ({msg.reasoning.length} chars)
-                                </summary>
-                                <div className="mt-1 text-[11px] text-adam-text-tertiary bg-adam-bg-dark rounded-lg p-2 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono">
-                                  {msg.reasoning}
-                                </div>
-                              </details>
+                            {msg.clarificationAnswers && msg.clarificationAnswers.length > 0 ? (
+                              <ClarificationAnswers answers={msg.clarificationAnswers} />
+                            ) : (
+                              <div className="text-adam-text-primary leading-relaxed">{msg.content}</div>
+                            )}
+
+                            {/* Workflow Timeline */}
+                            {msg.steps && msg.steps.length > 0 && (
+                              <WorkflowTimeline steps={msg.steps} reasoning={msg.reasoning} />
+                            )}
+
+                            {/* Inline snapshots in chat */}
+                            {msg.snapshots && Object.keys(msg.snapshots).length > 0 && (
+                              <div className="mt-3 grid grid-cols-3 gap-1.5">
+                                {Object.entries(msg.snapshots).filter(([_, svg]) => svg && !svg.includes('error')).map(([view, svg]) => (
+                                  <div key={view} className="rounded-lg overflow-hidden border border-adam-neutral-700/50 bg-adam-bg-dark/50">
+                                    <div className="h-20 flex items-center justify-center" dangerouslySetInnerHTML={{ __html: svg }} />
+                                    <div className="text-center text-[8px] text-adam-text-tertiary py-0.5 uppercase tracking-wider">{view}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Inline 2D dimensional views in chat */}
+                            {msg.dimViews && Object.keys(msg.dimViews).length > 0 && (
+                              <DimViews dimViews={msg.dimViews} />
+                            )}
+
+                            {/* Badges */}
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {msg.visionVerified && (
+                                <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-400/10 rounded-full px-2.5 py-1">
+                                  <Eye className="h-3 w-3" /> Vision-verified
+                                </span>
+                              )}
+                              {msg.bestEffort && (
+                                <span className="inline-flex items-center gap-1.5 text-[10px] text-yellow-400 bg-yellow-400/10 rounded-full px-2.5 py-1">
+                                  Best effort
+                                </span>
+                              )}
+                            </div>
+
+                            {msg.warning && (
+                              <div className="mt-2 text-[10px] text-yellow-400 bg-yellow-500/10 rounded-md px-2 py-1.5">
+                                {msg.warning}
+                              </div>
                             )}
                           </div>
+                          )
                         )
                       ))}
-                      {isGenerating && <StreamingMessage reasoning={streamReasoning} />}
+                      {isGenerating && (
+                        <StreamingMessage
+                          reasoning={streamReasoning}
+                          steps={messages.length > 0 && messages[messages.length - 1].role === 'assistant'
+                            ? messages[messages.length - 1].steps
+                            : undefined}
+                        />
+                      )}
                       <div ref={chatEndRef} />
                     </div>
                     <div className="border-t border-adam-neutral-700 p-3">
@@ -306,6 +496,20 @@ export default function App() {
 
                 {/* Right Panel */}
                 <div className="flex h-full w-[320px] max-w-[384px] shrink-0 flex-col overflow-y-auto bg-adam-bg-secondary-dark border-l border-adam-neutral-700">
+
+                  {/* Inspection */}
+                  {inspection && <InspectionPanel inspection={inspection} />}
+
+                  {/* Snapshots */}
+                  {Object.keys(snapshots).length > 0 && <SnapshotGallery snapshots={snapshots} />}
+
+                  {/* Dimensional Views */}
+                  {Object.keys(dimViews).length > 0 && (
+                    <div className="p-4 border-b border-adam-neutral-700">
+                      <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider mb-3">Dimensional Views</h3>
+                      <DimViews dimViews={dimViews} />
+                    </div>
+                  )}
 
                   {/* Parameters */}
                   {parameters.length > 0 && (
