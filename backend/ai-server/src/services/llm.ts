@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { config } from '../config';
 import { SYSTEM_PROMPT } from './prompt';
+import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
 
 // ─── Code Extraction ─────────────────────────────────────────────────
 export function extractPythonCode(text: string): string {
@@ -37,7 +38,7 @@ export function extractClarification(text: string): ClarificationOption[] | null
 
     // Structured format: { questions: [{ question, key, options, default }] }
     if (parsed.questions && Array.isArray(parsed.questions)) {
-      return parsed.questions.slice(0, 5).map((q: any) => ({
+      return parsed.questions.map((q: any) => ({
         question: q.question || q.text || '',
         key: q.key || q.question || '',
         options: Array.isArray(q.options) ? q.options : [],
@@ -48,7 +49,107 @@ export function extractClarification(text: string): ClarificationOption[] | null
   return null;
 }
 
-// ─── Per-Failure-Class Error Classification ──────────────────────────
+// ─── Proactive Clarification Agent ──────────────────────────────────
+//
+// Always runs before code generation. Uses a cheap model (mimo-v2.5) to
+// check if the prompt is clear enough to generate a valid CAD model.
+// If ambiguous, returns questions. If clear, returns the standardized prompt.
+
+export interface ClarificationResult {
+  isClear: boolean;
+  questions?: ClarificationOption[];
+  standardizedPrompt: string;
+  rawResponse: string;
+}
+
+export async function checkClarification(
+  prompt: string,
+  providerId?: string,
+): Promise<ClarificationResult> {
+  // Use the cheapest model for clarification
+  const clarifyProviderId = 'mimo';
+  const provider = config.providers[clarifyProviderId];
+  const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: 'system', content: CLARIFIER_SYSTEM_PROMPT },
+    { role: 'user', content: `Analyze this CAD generation prompt:\n\n${prompt}` },
+  ];
+
+  console.log(`[CLARIFIER] Checking prompt with ${clarifyProviderId}...`);
+
+  try {
+    const response = await llm.chat.completions.create({
+      model: provider.model,
+      messages,
+      temperature: 0.1,
+    });
+
+    const rawResponse = response.choices[0]?.message?.content || '';
+    console.log(`[CLARIFIER] Response length: ${rawResponse.length} chars`);
+    console.log(`[CLARIFIER] Response preview: ${rawResponse.slice(0, 300)}`);
+
+    // Parse JSON response
+    let parsed: any;
+    try {
+      // Extract JSON from response (handle ```json blocks)
+      const jsonMatch = rawResponse.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ||
+                         rawResponse.match(/(\{[\s\S]*\})/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[1]);
+        console.log(`[CLARIFIER] Parsed JSON:`, JSON.stringify(parsed).slice(0, 200));
+      } else {
+        console.log(`[CLARIFIER] No JSON found in response`);
+      }
+    } catch (e) {
+      console.log(`[CLARIFIER] Failed to parse JSON: ${e}`);
+    }
+
+    if (!parsed) {
+      return { isClear: true, standardizedPrompt: prompt, rawResponse };
+    }
+
+    // Extract questions first — if questions exist, prompt is ALWAYS ambiguous
+    const questions: ClarificationOption[] = (parsed.questions || []).map((q: any) => ({
+      question: q.question || '',
+      key: q.key || q.question || '',
+      options: Array.isArray(q.options) ? q.options : [],
+      default: q.default || q.options?.[0] || '',
+    }));
+
+    // If model returned questions, treat as ambiguous regardless of is_clear
+    if (questions.length > 0) {
+      console.log(`[CLARIFIER] Found ${questions.length} clarifying questions`);
+      return {
+        isClear: false,
+        questions,
+        standardizedPrompt: prompt,
+        rawResponse,
+      };
+    }
+
+    // No questions — check is_clear flag
+    if (parsed.is_clear === true || parsed.is_clear === undefined) {
+      return {
+        isClear: true,
+        standardizedPrompt: parsed.standardized_prompt || prompt,
+        rawResponse,
+      };
+    }
+
+    // is_clear is false but no questions — treat as clear
+    return {
+      isClear: true,
+      standardizedPrompt: parsed.standardized_prompt || prompt,
+      rawResponse,
+    };
+  } catch (e: unknown) {
+    const err = e as any;
+    console.error(`[CLARIFIER] Error: ${err.message}`);
+    // On error, skip clarification and proceed with original prompt
+    return { isClear: true, standardizedPrompt: prompt, rawResponse: '' };
+  }
+}
 //
 // Instead of generic categories, we parse the actual error message to
 // identify the specific failure pattern and give a targeted repair hint
@@ -518,7 +619,6 @@ Respond with:
     const response = await llm.chat.completions.create({
       model: provider.model,
       messages: [{ role: 'user', content }],
-      max_tokens: 500,
       temperature: 0.1,
     });
 

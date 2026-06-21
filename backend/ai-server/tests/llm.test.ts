@@ -52,13 +52,13 @@ describe('extractClarification', () => {
     expect(result![0].options).toEqual([]);
   });
 
-  it('limits to 5 questions', () => {
-    const questions = Array.from({ length: 10 }, (_, i) => ({
+  it('handles multiple questions', () => {
+    const questions = Array.from({ length: 8 }, (_, i) => ({
       question: `Q${i}`, key: `q${i}`, options: ['a'], default: 'a',
     }));
     const input = '```clarify\n' + JSON.stringify({ questions }) + '\n```';
     const result = extractClarification(input);
-    expect(result).toHaveLength(5);
+    expect(result).toHaveLength(8);
   });
 
   it('returns null for invalid JSON', () => {

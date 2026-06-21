@@ -6,6 +6,7 @@ import {
   buildInspectionFeedback,
   extractClarification,
   inspectWithVision,
+  checkClarification,
 } from '../services/llm';
 import { config } from '../config';
 
@@ -107,6 +108,26 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     sendSSE(res, 'step', { id, status: 'error', detail });
   };
 
+  // ── STEP 0: Proactive Clarification (cheap model, always runs first) ──
+  if (!answers) {
+    step('clarify', 'help-circle', 'Checking specifications', 'Analyzing prompt for missing dimensions and ambiguities');
+
+    const clarification = await checkClarification(effectivePrompt, providerId);
+
+    if (!clarification.isClear && clarification.questions && clarification.questions.length > 0) {
+      // Prompt is ambiguous — send questions to frontend and wait for answers
+      stepDone('clarify', `Found ${clarification.questions.length} questions to clarify`);
+      console.log(`[ROUTE] Clarifier found ${clarification.questions.length} questions`);
+      sendSSE(res, 'clarify', { questions: clarification.questions, originalPrompt: prompt });
+      res.end();
+      return;
+    }
+
+    // Prompt is clear — use standardized version
+    stepDone('clarify', 'Specifications are clear');
+    effectivePrompt = clarification.standardizedPrompt;
+  }
+
   // Initial analysis step
   step('analyze', 'search', 'Analyzing request', 'Extracting dimensions, features, and parameters from your prompt');
 
@@ -142,18 +163,6 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
 
       if (attempt === 0) {
         stepDone('analyze', 'Identified the requested geometry type and parameters');
-      }
-
-      // ── Check for clarification request ──
-      if (attempt === 0 && !answers) {
-        const clarification = extractClarification(rawResponse);
-        if (clarification && clarification.length > 0) {
-          step('clarify', 'help-circle', 'Clarifying details', `Asking ${clarification.length} questions to fill missing critical specs`);
-          console.log(`[ROUTE] LLM requested clarification: ${clarification.length} questions`);
-          sendSSE(res, 'clarify', { questions: clarification, originalPrompt: prompt });
-          res.end();
-          return;
-        }
       }
 
       if (!code || code.length < 20) {
