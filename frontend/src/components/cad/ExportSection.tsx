@@ -24,7 +24,7 @@ export function ExportSection({ stlBase64, stepBase64, exportFilename, setExport
 
   return (
     <div className="p-4 border-b border-adam-neutral-700">
-      <GlowCard glowColor="purple" customSize className="w-full">
+      <GlowCard glowColor="blue" customSize className="w-full">
         <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider mb-3">Export</h3>
         <div className="mb-3">
           <label className="text-[10px] text-adam-text-tertiary mb-1 block">Filename</label>

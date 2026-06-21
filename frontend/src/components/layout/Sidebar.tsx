@@ -34,7 +34,7 @@ export function Sidebar({ isOpen, onNewTask }: SidebarProps) {
         <div className={`${isOpen ? 'px-4' : 'px-2'} py-4`}>
           {isOpen ? (
             <div className="text-[10px] text-adam-text-tertiary leading-relaxed">
-              Powered by 0G Compute<br />+ Xiaomi MiMo
+              Powered by 0G Compute<br />+ Xiaomi MiMo 2.5
             </div>
           ) : (
             <div className="w-8 h-8 rounded-full bg-adam-blue/20 flex items-center justify-center mx-auto">

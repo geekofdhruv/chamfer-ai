@@ -26,7 +26,7 @@ import { useAutoScroll } from '@/hooks/useAutoScroll';
 import { useParamUpdate } from '@/hooks/useParamUpdate';
 
 // Constants
-import { PARAM_PHASES } from '@/lib/constants';
+import { PARAM_PHASES, getProviderDisplayName } from '@/lib/constants';
 
 export default function App() {
   // ── State ──
@@ -255,8 +255,8 @@ export default function App() {
           content: finalData.bestEffort
             ? `Generated (best effort) — ${finalData.warning || 'model had issues'}`
             : finalData.visionVerified
-            ? `Generated with ${finalData.provider || provider} (vision-verified)`
-            : `Generated with ${finalData.provider || provider}`,
+            ? `Generated with ${getProviderDisplayName(finalData.provider || provider)} (vision-verified)`
+            : `Generated with ${getProviderDisplayName(finalData.provider || provider)}`,
           reasoning: finalData.reasoning,
           provider: finalData.provider,
           bestEffort: finalData.bestEffort,
@@ -411,7 +411,7 @@ export default function App() {
                           (isGenerating && i === messages.length - 1 && msg.role === 'assistant' && !msg.content) ? null : (
                           <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === 'user' ? 'bg-adam-background-1' : msg.error ? 'bg-red-500/10' : 'bg-adam-background-1'}`}>
                             <div className="text-[10px] text-adam-text-tertiary mb-1 font-medium">
-                              {msg.role === 'user' ? 'You' : msg.provider || 'VibeCAD'}
+                              {msg.role === 'user' ? 'You' : msg.provider ? getProviderDisplayName(msg.provider) : 'VibeCAD'}
                             </div>
                             {msg.clarificationAnswers && msg.clarificationAnswers.length > 0 ? (
                               <ClarificationAnswers answers={msg.clarificationAnswers} />
