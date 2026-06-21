@@ -1,0 +1,337 @@
+0G Storage: Built for Massive Data
+Current storage options force impossible tradeoffs:
+
+Cloud providers: Fast but expensive with vendor lock-in
+Decentralized options: Either slow (IPFS), limited (Filecoin), or prohibitively expensive (Arweave)
+What is 0G Storage?
+0G Storage breaks these tradeoffs - a decentralized storage network that's as fast as AWS S3 but built for Web3. Purpose-designed for AI workloads and massive datasets.
+
+New to decentralized storage?
+Why Choose 0G Storage?
+🚀 The Complete Package
+What You Get	Why It Matters
+95% lower costs than AWS	Sustainable for large datasets
+Instant retrieval	No waiting for critical data
+Structured + unstructured data	One solution for all storage needs
+Universal compatibility	Works with any blockchain or Web2 app
+Proven scale	Already handling TB-scale workloads
+How It Works
+0G Storage is a distributed data storage system designed with on-chain elements to incentivize storage nodes to store data on behalf of users. Anyone can run a storage node and receive rewards for maintaining one.
+
+Technical Architecture
+0G Storage uses a two-lane system:
+
+📤 Data Publishing Lane
+Handles metadata and availability proofs
+Verified through 0G Consensus network
+Enables fast data discovery
+💾 Data Storage Lane
+Manages actual data storage
+Uses erasure coding: splits data into chunks with redundancy
+Even if 30% of nodes fail, your data remains accessible
+Automatic replication maintains availability
+Storage Architecture
+Storage Layers for Different Needs
+📁 Log Layer (Immutable Storage)
+Perfect for: AI training data, archives, backups
+
+Append-only (write once, read many)
+Optimized for large files
+Lower cost for permanent storage
+Use cases:
+
+ML datasets
+Video/image archives
+Blockchain history
+General Large file storage
+🔑 Key-Value Layer (Mutable Storage)
+Perfect for: Databases, dynamic content, state storage
+
+Update existing data
+Fast key-based retrieval
+Real-time applications
+Use cases:
+
+On-chain databases
+User profiles
+Game state
+Collaborative documents
+How Storage Providers Earn
+0G Storage is maintained by a network of miners incentivized to store and manage data through a unique consensus mechanism known as Proof of Random Access (PoRA).
+
+How It Works
+Random Challenges: System randomly asks miners to prove they have specific data
+Cryptographic Proof: Miners must generate a valid hash (like Bitcoin mining)
+Quick Response: Must respond fast to prove data is readily accessible
+Fair Rewards: Successful proofs earn storage fees
+What's PoRA in simple terms?
+PoRA
+Fair Competition = Fair Reward
+To promote fairness, the mining range is capped at 8 TB of data per mining operation.
+
+Why 8TB limit?
+
+Small miners can compete with large operations
+Prevents centralization
+Lower barrier to entry
+For large operators: Run multiple 8TB instances.
+
+For individuals: Focus on single 8TB range, still profitable
+
+Mining Ranges
+How 0G Compares
+Solution	Best For	Limitation
+0G Storage	AI/Web3 apps needing speed + scale	Newer ecosystem
+AWS S3	Traditional apps	Centralized, expensive
+Filecoin	Cold storage archival	Slow retrieval, unstructured only
+Arweave	Permanent storage	Extremely expensive
+IPFS	Small files, hobby projects	Very slow, no guarantees
+0G's Unique Position
+Only solution supporting both structured and unstructured data
+Instant access unlike other decentralized options
+Built for AI from the ground up
+Frequently Asked Questions
+Is my data really safe if nodes go offline?
+How fast can I retrieve large files?
+What happens to pricing as the network grows?
+Can I migrate from existing storage?
+Get Started
+🧑‍💻 For Developers
+Integrate 0G Storage in minutes → SDK Documentation
+
+⛏️ For Storage Providers
+Earn by providing storage capacity → Run a Storage Node
+
+0G Storage: Purpose-built for AI and Web3's massive data needs.
+
+0G Storage SDKs
+Build decentralized storage into your applications with our powerful SDKs designed for modern development workflows.
+
+Available SDKs
+Go SDK: Ideal for backend systems and applications built with Go
+TypeScript SDK: Perfect for frontend development and JavaScript-based projects
+Core Features
+Both SDKs provide a streamlined interface to interact with the 0G Storage network:
+
+Upload and Download Files: Securely store and retrieve data of various sizes and formats
+Manage Data: List uploaded files, check their status, and control access permissions
+Leverage Decentralization: Benefit from the 0G network's distributed architecture for enhanced data availability, immutability, and censorship resistance
+Quick Start Resources
+Starter Kits Available
+Get up and running quickly with our starter kits:
+
+TypeScript Starter Kit - CLI scripts, importable library, and browser UI with MetaMask wallet connect. Supports turbo/standard modes.
+Go Starter Kit - Ready-to-use examples with Gin server and CLI tool
+# TypeScript — upload a file in under 5 minutes
+git clone https://github.com/0gfoundation/0g-storage-ts-starter-kit
+cd 0g-storage-ts-starter-kit && npm install
+cp .env.example .env   # Add your PRIVATE_KEY
+npm run upload -- ./file.txt
+
+Go SDK
+TypeScript SDK
+Installation
+Install the SDK and its peer dependency:
+
+npm install @0gfoundation/0g-storage-ts-sdk ethers
+
+note
+ethers is a required peer dependency for blockchain interactions
+
+Setup
+Import Required Modules
+import { ZgFile, Indexer, MemData } from '@0gfoundation/0g-storage-ts-sdk';
+import { ethers } from 'ethers';
+
+Initialize Configuration
+// Network endpoints — see network overview docs for current values
+// Turbo indexer (recommended):
+const RPC_URL = 'https://evmrpc-testnet.0g.ai';
+const INDEXER_RPC = 'https://indexer-storage-testnet-turbo.0g.ai';
+
+// Initialize provider and signer
+const provider = new ethers.JsonRpcProvider(RPC_URL);
+const signer = new ethers.Wallet('YOUR_PRIVATE_KEY', provider);
+
+// Initialize indexer — flow contract is auto-discovered
+const indexer = new Indexer(INDEXER_RPC);
+
+Turbo vs Standard
+0G Storage has two independent networks: Turbo (faster, higher fees) and Standard (slower, lower fees). Each uses a different indexer URL. The SDK auto-discovers the correct flow contract from the indexer. See Testnet or Mainnet for current endpoints.
+
+Core Operations
+File Upload
+Upload a file from the filesystem:
+
+async function uploadFile(filePath) {
+  const file = await ZgFile.fromFilePath(filePath);
+
+  // Must call merkleTree() before upload — populates internal state
+  const [tree, treeErr] = await file.merkleTree();
+  if (treeErr !== null) throw new Error(`Merkle tree error: ${treeErr}`);
+
+  console.log("Root Hash:", tree?.rootHash());
+
+  const [tx, uploadErr] = await indexer.upload(file, RPC_URL, signer);
+  if (uploadErr !== null) throw new Error(`Upload error: ${uploadErr}`);
+
+  await file.close(); // Always close when done
+
+  // Handle both single and fragmented (>4GB) responses
+  if ('rootHash' in tx) {
+    return { rootHash: tx.rootHash, txHash: tx.txHash };
+  } else {
+    return { rootHashes: tx.rootHashes, txHashes: tx.txHashes };
+  }
+}
+
+Upload In-Memory Data
+Upload strings or buffers without writing to disk using MemData:
+
+const data = new TextEncoder().encode('Hello, 0G Storage!');
+const memData = new MemData(data);
+const [tree, treeErr] = await memData.merkleTree();
+const [tx, err] = await indexer.upload(memData, RPC_URL, signer);
+
+File Download
+Download with optional verification:
+
+async function downloadFromIndexer(rootHash, outputPath) {
+  // withProof = true enables Merkle proof verification
+  const err = await indexer.download(rootHash, outputPath, true);
+  if (err !== null) {
+    throw new Error(`Download error: ${err}`);
+  }
+  console.log("Download successful!");
+}
+
+Key-Value Storage
+Store and retrieve key-value data:
+
+// Upload data to 0G-KV
+async function uploadToKV(streamId, key, value) {
+  const [nodes, err] = await indexer.selectNodes(1);
+  if (err !== null) {
+    throw new Error(`Error selecting nodes: ${err}`);
+  }
+
+  const batcher = new Batcher(1, nodes, flowContract, RPC_URL);
+
+  const keyBytes = Uint8Array.from(Buffer.from(key, 'utf-8'));
+  const valueBytes = Uint8Array.from(Buffer.from(value, 'utf-8'));
+  batcher.streamDataBuilder.set(streamId, keyBytes, valueBytes);
+
+  const [tx, batchErr] = await batcher.exec();
+  if (batchErr !== null) {
+    throw new Error(`Batch execution error: ${batchErr}`);
+  }
+
+  console.log("KV upload successful! TX:", tx);
+}
+
+// Download data from 0G-KV
+async function downloadFromKV(streamId, key) {
+  const kvClient = new KvClient("http://3.101.147.150:6789");
+  const keyBytes = Uint8Array.from(Buffer.from(key, 'utf-8'));
+  const value = await kvClient.getValue(streamId, ethers.encodeBase64(keyBytes));
+  return value;
+}
+
+Browser Support
+For browser environments, use the SDK's Blob class (alias it to avoid collision with native Blob):
+
+import { Blob as ZgBlob, Indexer } from '@0gfoundation/0g-storage-ts-sdk';
+import { BrowserProvider } from 'ethers';
+
+// Connect wallet via MetaMask
+const provider = new BrowserProvider(window.ethereum);
+await provider.send('eth_requestAccounts', []);
+const signer = await provider.getSigner();
+
+// Upload a browser File object
+const zgBlob = new ZgBlob(fileInput.files[0]);
+const [tree, treeErr] = await zgBlob.merkleTree();
+const indexer = new Indexer(INDEXER_RPC);
+const [tx, err] = await indexer.upload(zgBlob, RPC_URL, signer);
+
+Browser Downloads
+indexer.download() uses fs.appendFileSync internally and does not work in browsers. For browser downloads, use StorageNode.downloadSegmentByTxSeq() to fetch segments manually and reassemble in memory. See the TypeScript Starter Kit web/src/storage.ts for a complete working implementation.
+
+Vite/Webpack Setup
+The SDK imports Node.js modules (fs, crypto) at load time. You need polyfills and stub aliases for browser bundlers. See the starter kit's web/vite.config.ts for a working Vite configuration with vite-plugin-node-polyfills.
+
+Encryption & Decryption
+note
+Requires @0gfoundation/0g-storage-ts-sdk v1.2.6 or later.
+
+Files are encrypted client-side before upload — the 0G network never sees plaintext. A compact header (17–50 bytes) is prepended so the SDK can auto-detect encryption mode on download.
+
+Mode	Key material	Header size
+aes256	32-byte symmetric key	17 bytes
+ecies	secp256k1 keypair	50 bytes
+AES-256
+import { ZgFile, Indexer } from '@0gfoundation/0g-storage-ts-sdk';
+import { ethers } from 'ethers';
+
+const indexer = new Indexer(indexerRpc);
+const signer = new ethers.Wallet(privateKey, provider);
+
+// save this: there is no server-side recovery
+const key = crypto.randomBytes(32); // Node.js — or crypto.getRandomValues in browser
+
+const file = await ZgFile.fromFilePath('./secret.txt');
+const [tx, err] = await indexer.upload(file, rpcUrl, signer, {
+  encryption: { type: 'aes256', key },
+});
+
+// Download + decrypt
+const [blob, dlErr] = await indexer.downloadToBlob(rootHash, {
+  proof: true,
+  decryption: { symmetricKey: key },
+});
+
+ECIES
+For encrypt-to-self, your wallet's existing secp256k1 key works for both storage signing and decryption. Pass any recipient's compressed public key to encrypt for someone else.
+
+import { ZgFile, Indexer } from '@0gfoundation/0g-storage-ts-sdk';
+import { ethers } from 'ethers';
+
+const wallet = new ethers.Wallet(privateKey, provider);
+const recipientPubKey = ethers.SigningKey.computePublicKey(
+  wallet.signingKey.publicKey, true  // true = compressed 33-byte key
+);
+
+const file = await ZgFile.fromFilePath('./secret.txt');
+const [tx, err] = await indexer.upload(file, rpcUrl, signer, {
+  encryption: { type: 'ecies', recipientPubKey },
+});
+
+// Download + decrypt
+const [blob, dlErr] = await indexer.downloadToBlob(rootHash, {
+  proof: true,
+  decryption: { privateKey },
+});
+
+Detecting encryption mode
+import { Indexer } from '@0gfoundation/0g-storage-ts-sdk';
+
+const [header, err] = await indexer.peekHeader(rootHash);
+// returns null for plaintext files
+// header.version === 1 → aes256
+// header.version === 2 → ecies
+
+note
+Wrong key does not throw — downloadToBlob silently returns raw ciphertext if the key doesn't match. Call peekHeader first if you are unsure whether a file is encrypted.
+
+indexer.download() does not support decryption. For encrypted files, always use indexer.downloadToBlob(). Large files will be fully buffered in memory.
+
+Best Practices
+Initialize Once: Create the indexer once and reuse it for multiple operations
+Handle Errors: Always implement proper error handling for network issues
+Use Appropriate Methods: Use ZgFile.fromFilePath for Node.js and Blob for browsers
+Secure Keys: Never expose private keys in client-side code
+Close Resources: Remember to call file.close() after operations
+Additional Resources
+TypeScript SDK Repository
+TypeScript Starter Kit — Scripts, library, and browser UI with MetaMask
+Need more control? Consider running your own storage node to participate in the network and earn rewards.

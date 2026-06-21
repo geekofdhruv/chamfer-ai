@@ -1,10 +1,18 @@
 import os
-import sys
-import tempfile
-import subprocess
 import json
-import base64
+import tempfile
 from pathlib import Path
+
+try:
+    import docker as _docker
+    _DOCKER_CLIENT = _docker.from_env()
+    _DOCKER_AVAILABLE = True
+except Exception:
+    _DOCKER_CLIENT = None
+    _DOCKER_AVAILABLE = False
+
+_IMAGE = "vibecad-cad-executor"
+_EXECUTION_TIMEOUT = 30
 
 
 def execute_cadquery(
@@ -14,204 +22,151 @@ def execute_cadquery(
     render_png: bool = False,
     render_dim_views: bool = False,
 ) -> dict:
-    """Execute CadQuery code in a sandboxed subprocess and return file bytes + validation + snapshots.
+    """Execute CadQuery code in a sandboxed Docker container.
 
     Args:
-        code: CadQuery Python source code
-        params: Optional parameter substitutions
-        render_snapshots: Render SVG snapshots (for user display)
-        render_png: Render PNG snapshots (for LLM visual inspection)
-        render_dim_views: Render 2D dimensional orthographic views (top/front/side)
+        code: CadQuery Python source code.
+        params: Optional parameter substitutions.
+        render_snapshots: Render SVG snapshots (for user display).
+        render_png: Render PNG snapshots (for LLM visual inspection).
+        render_dim_views: Render 2D dimensional orthographic views (top/front/side).
+
+    Returns dict matching the existing interface:
+        success, error, stl, step, glb, validation, inspection,
+        snapshots, png_snapshots, dim_views
     """
     from params import substitute_params
+
+    if not _DOCKER_AVAILABLE:
+        return {
+            "success": False,
+            "error": "Docker is not available — install docker and the docker Python SDK, "
+                     "then build the executor image with: docker build -t vibecad-cad-executor .",
+        }
 
     processed_code = substitute_params(code, params) if params else code
 
     with tempfile.TemporaryDirectory(prefix="vibecad_") as work_dir:
-        user_code_path = Path(work_dir) / "user_code.py"
-        runner_path = Path(work_dir) / "runner.py"
-        stl_path = Path(work_dir) / "output.stl"
-        step_path = Path(work_dir) / "output.step"
-        glb_path = Path(work_dir) / "output.glb"
-        validation_path = Path(work_dir) / "validation.json"
-        inspection_path = Path(work_dir) / "inspection.json"
-        snapshot_dir = Path(work_dir) / "snapshots"
-        snapshots_path = Path(work_dir) / "snapshots.json"
-        png_snapshots_path = Path(work_dir) / "png_snapshots.json"
-        dim_views_path = Path(work_dir) / "dim_views.json"
+        os.chmod(work_dir, 0o777)  # allow container (UID 1000) to write to mounted volume
+        work = Path(work_dir)
 
-        user_code_path.write_text(processed_code, encoding="utf-8")
-
-        # ── SVG snapshot rendering (for user display) ──
-        svg_snapshot_code = ""
-        if render_snapshots:
-            svg_snapshot_code = f'''
-    try:
-        import sys as _sys
-        _sys.path.insert(0, {str(Path(__file__).parent.resolve())!r})
-        from snapshot import render_snapshots as _render_svg
-        _snap_paths = _render_svg(r, {str(snapshot_dir)!r})
-        _snaps = {{}}
-        for _view, _path in _snap_paths.items():
-            with open(_path, "r") as _sf:
-                _snaps[_view] = _sf.read()
-        with open({str(snapshots_path)!r}, "w") as _sf:
-            json.dump(_snaps, _sf)
-    except Exception as _se:
-        with open({str(snapshots_path)!r}, "w") as _sf:
-            json.dump({{"error": str(_se)}}, _sf)
-'''
-
-        # ── PNG snapshot rendering (for LLM visual inspection) ──
-        png_snapshot_code = ""
-        if render_png:
-            png_snapshot_code = f'''
-    try:
-        import sys as _sys2
-        _sys2.path.insert(0, {str(Path(__file__).parent.resolve())!r})
-        from png_snapshot import render_png_snapshots as _render_png
-        _png_snaps = _render_png({str(stl_path)!r}, {str(snapshot_dir)!r})
-        with open({str(png_snapshots_path)!r}, "w") as _pf:
-            json.dump(_png_snaps, _pf)
-    except Exception as _pse:
-        with open({str(png_snapshots_path)!r}, "w") as _pf:
-            json.dump({{"error": str(_pse)}}, _pf)
-'''
-
-        # ── 2D dimensional views (top/front/side with dimensions) ──
-        dim_views_code = ""
-        if render_dim_views:
-            dim_views_code = f'''
-    try:
-        import sys as _sys3
-        _sys3.path.insert(0, {str(Path(__file__).parent.resolve())!r})
-        from dim_views import render_dim_views as _render_dim
-        _dim_views = _render_dim({str(stl_path)!r}, {str(snapshot_dir)!r})
-        with open({str(dim_views_path)!r}, "w") as _df:
-            json.dump(_dim_views, _df)
-    except Exception as _dve:
-        with open({str(dim_views_path)!r}, "w") as _df:
-            json.dump({{"error": str(_dve)}}, _df)
-'''
-
-        runner = f'''
-import cadquery as cq
-import sys
-import json
-
-try:
-    exec(open({str(user_code_path)!r}).read())
-    if "r" not in dir():
-        raise ValueError("Code did not define variable 'r'")
-
-    # Export files
-    cq.exporters.export(r, {str(stl_path)!r})
-    cq.exporters.export(r, {str(step_path)!r})
-
-    try:
-        asm = cq.Assembly()
-        asm.add(r, name="model")
-        asm.save({str(glb_path)!r}, "GLTF")
-    except Exception:
-        pass
-
-    # Run validation
-    val = r.val()
-    validation = {{
-        "volume": round(val.Volume(), 3),
-        "surface_area": round(val.Area(), 3),
-        "is_valid": val.isValid(),
-        "has_volume": val.Volume() > 0,
-        "bounding_box": {{
-            "size": [round(val.BoundingBox().xlen, 3), round(val.BoundingBox().ylen, 3), round(val.BoundingBox().zlen, 3)],
-            "min": [round(val.BoundingBox().xmin, 3), round(val.BoundingBox().ymin, 3), round(val.BoundingBox().zmin, 3)],
-            "max": [round(val.BoundingBox().xmax, 3), round(val.BoundingBox().ymax, 3), round(val.BoundingBox().zmax, 3)],
-        }},
-    }}
-
-    warnings = []
-    if validation["volume"] <= 0:
-        warnings.append("Model has zero volume")
-    bb_size = validation["bounding_box"]["size"]
-    if any(s > 10000 for s in bb_size):
-        warnings.append(f"Model is very large ({{bb_size}}mm), check units")
-    if any(0 < s < 0.01 for s in bb_size):
-        warnings.append(f"Model is very small ({{bb_size}}mm), check units")
-    validation["warnings"] = warnings
-
-    with open({str(validation_path)!r}, "w") as vf:
-        json.dump(validation, vf)
-
-    # Run detailed inspection
-    try:
-        sys.path.insert(0, {str(Path(__file__).parent.resolve())!r})
-        from inspector import inspect_geometry
-        inspection = inspect_geometry(r)
-        with open({str(inspection_path)!r}, "w") as inf:
-            json.dump(inspection, inf)
-    except Exception as ie:
-        with open({str(inspection_path)!r}, "w") as inf:
-            json.dump({{"error": str(ie)}}, inf)
-{svg_snapshot_code}{png_snapshot_code}{dim_views_code}
-    print("SUCCESS")
-except Exception as e:
-    print(f"ERROR: {{e}}", file=sys.stderr)
-    sys.exit(1)
-'''
-        runner_path.write_text(runner, encoding="utf-8")
-
-        result = subprocess.run(
-            [sys.executable, str(runner_path)],
-            capture_output=True, text=True, timeout=60, cwd=work_dir,
+        # ── Write inputs ──
+        (work / "user_code.py").write_text(processed_code, encoding="utf-8")
+        (work / "config.json").write_text(
+            json.dumps({
+                "render_snapshots": render_snapshots,
+                "render_png": render_png,
+                "render_dim_views": render_dim_views,
+            }),
+            encoding="utf-8",
         )
 
-        if result.returncode != 0:
-            return {"success": False, "error": result.stderr.strip() or "Unknown error"}
+        # ── Launch Docker container ──
+        container = None
+        try:
+            container = _DOCKER_CLIENT.containers.run(
+                _IMAGE,
+                command=["python", "/app/runner.py"],
+                volumes={work_dir: {"bind": "/work", "mode": "rw"}},
+                network_mode="none",
+                mem_limit="2g",
+                cpu_count=1,
+                read_only=True,
+                tmpfs={"/tmp": "size=128m"},
+                security_opt=["no-new-privileges"],
+                cap_drop=["ALL"],
+                user="1000:1000",
+                detach=True,
+            )
 
-        stl_bytes = stl_path.read_bytes() if stl_path.exists() else None
-        step_bytes = step_path.read_bytes() if step_path.exists() else None
-        glb_bytes = glb_path.read_bytes() if glb_path.exists() else None
+            exit_result = container.wait(timeout=_EXECUTION_TIMEOUT)
+
+            if exit_result["StatusCode"] != 0:
+                stderr = ""
+                try:
+                    stderr = container.logs(stdout=False, stderr=True).decode(
+                        errors="replace"
+                    )
+                except Exception:
+                    pass
+                return {
+                    "success": False,
+                    "error": stderr.strip() or "Unknown execution error",
+                }
+
+        except Exception as exc:
+            # ── Timeout path — kill container immediately ──
+            if container is not None:
+                try:
+                    container.kill()
+                except Exception:
+                    pass
+            # Detect timeout from Docker SDK errors
+            msg = str(exc)
+            if "timeout" in msg.lower() or "ReadTimeout" in type(exc).__name__:
+                return {
+                    "success": False,
+                    "error": f"Execution timed out after {_EXECUTION_TIMEOUT}s",
+                }
+            return {"success": False, "error": msg}
+
+        finally:
+            if container is not None:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
+
+        # ── Collect output files ──
+        stl = (work / "output.stl").read_bytes() if (work / "output.stl").exists() else None
+        step = (work / "output.step").read_bytes() if (work / "output.step").exists() else None
+        glb = (work / "output.glb").read_bytes() if (work / "output.glb").exists() else None
 
         validation = {}
-        if validation_path.exists():
+        val_path = work / "validation.json"
+        if val_path.exists():
             try:
-                validation = json.loads(validation_path.read_text())
+                validation = json.loads(val_path.read_text(encoding="utf-8"))
             except Exception:
-                validation = {}
+                pass
 
         inspection = {}
-        if inspection_path.exists():
+        insp_path = work / "inspection.json"
+        if insp_path.exists():
             try:
-                inspection = json.loads(inspection_path.read_text())
+                inspection = json.loads(insp_path.read_text(encoding="utf-8"))
             except Exception:
-                inspection = {}
+                pass
 
         snapshots = {}
-        if snapshots_path.exists():
+        snap_path = work / "snapshots.json"
+        if snap_path.exists():
             try:
-                snapshots = json.loads(snapshots_path.read_text())
+                snapshots = json.loads(snap_path.read_text(encoding="utf-8"))
             except Exception:
-                snapshots = {}
+                pass
 
         png_snapshots = {}
-        if png_snapshots_path.exists():
+        png_path = work / "png_snapshots.json"
+        if png_path.exists():
             try:
-                png_snapshots = json.loads(png_snapshots_path.read_text())
+                png_snapshots = json.loads(png_path.read_text(encoding="utf-8"))
             except Exception:
-                png_snapshots = {}
+                pass
 
         dim_views = {}
-        if dim_views_path.exists():
+        dim_path = work / "dim_views.json"
+        if dim_path.exists():
             try:
-                dim_views = json.loads(dim_views_path.read_text())
+                dim_views = json.loads(dim_path.read_text(encoding="utf-8"))
             except Exception:
-                dim_views = {}
+                pass
 
         return {
             "success": True,
-            "stl": stl_bytes,
-            "step": step_bytes,
-            "glb": glb_bytes,
+            "stl": stl,
+            "step": step,
+            "glb": glb,
             "validation": validation,
             "inspection": inspection,
             "snapshots": snapshots,
