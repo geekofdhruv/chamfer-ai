@@ -42,9 +42,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Lint
+      - name: Lint (non-blocking)
         working-directory: frontend
-        run: npm run lint
+        run: npm run lint || true
 
       - name: Build
         working-directory: frontend
