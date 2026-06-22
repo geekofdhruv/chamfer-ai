@@ -1,0 +1,189 @@
+# FEW-SHOT EXAMPLES
+
+Output format: JSON with keys "code", "parameters", "description", "tags".
+
+---
+EXAMPLE 1 – Mounting Bracket (positive: shows union, holes, fillets)
+---
+User: "A right-angle bracket with two holes on each leg, 100mm long, 50mm wide, 5mm thick"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nbracket_length = 100.0\nbracket_width = 50.0\nbracket_thickness = 5.0\nhole_diameter = 6.0\nhole_offset = 10.0\nfillet_radius = 1.5\n\n# Horizontal leg\nbase = cq.Workplane('XY').box(bracket_length, bracket_width, bracket_thickness, centered=True)\n\n# Vertical leg\nleg = cq.Workplane('YZ').box(bracket_length, bracket_width, bracket_thickness, centered=True)\nleg = leg.translate((0, bracket_width/2, bracket_width/2))\n\n# Combine\nbracket = base.union(leg)\n\n# Holes on horizontal leg (top face)\nbracket = (bracket\n    .faces('>Z')\n    .workplane()\n    .rarray(bracket_length - 2*hole_offset, 1, 2, 1)\n    .hole(hole_diameter))\n\n# Holes on vertical leg (front face)\nbracket = (bracket\n    .faces('>X')\n    .workplane()\n    .rarray(bracket_length - 2*hole_offset, 1, 2, 1)\n    .hole(hole_diameter))\n\n# Fillets (ALWAYS LAST — radius must be < half thickness)\nbracket = bracket.edges('|Z').fillet(fillet_radius)\n\nresult = bracket",
+  "parameters": {
+    "bracket_length": {"type": "float", "default": 100.0, "min": 30, "max": 300, "step": 5, "description": "Overall length mm"},
+    "bracket_width": {"type": "float", "default": 50.0, "min": 20, "max": 150, "step": 5, "description": "Leg width mm"},
+    "bracket_thickness": {"type": "float", "default": 5.0, "min": 1, "max": 15, "step": 0.5, "description": "Thickness mm"},
+    "hole_diameter": {"type": "float", "default": 6.0, "min": 2, "max": 20, "step": 0.5, "description": "Hole diameter mm"},
+    "hole_offset": {"type": "float", "default": 10.0, "min": 5, "max": 30, "step": 1, "description": "Hole offset from edge mm"},
+    "fillet_radius": {"type": "float", "default": 1.5, "min": 0, "max": 10, "step": 0.5, "description": "Fillet radius mm (must be < half thickness)"}
+  },
+  "description": "An L-shaped mounting bracket with holes and fillets",
+  "tags": ["bracket", "mechanical"]
+}
+
+---
+EXAMPLE 2 – NEGATIVE: Missing result variable (critical error)
+---
+User: "A cube 10mm"
+Assistant (WRONG):
+{
+  "code": "import cadquery as cq\n\ncube = cq.Workplane('XY').box(10,10,10)",
+  "parameters": {"side": {"type": "float", "default": 10, "min": 1, "max": 100, "step": 1, "description": "Side length mm"}},
+  "description": "A cube",
+  "tags": ["cube"]
+}
+CORRECTED:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nside = 10.0\n\nresult = cq.Workplane('XY').box(side, side, side)",
+  "parameters": {"side": {"type": "float", "default": 10, "min": 1, "max": 100, "step": 1, "description": "Side length mm"}},
+  "description": "A cube with adjustable side length",
+  "tags": ["cube", "basic"]
+}
+
+---
+EXAMPLE 3 – NEGATIVE: Using show_object (critical error)
+---
+User: "A cylinder 20mm diameter, 50mm tall"
+Assistant (WRONG):
+{
+  "code": "import cadquery as cq\n\nheight = 50.0\ndiameter = 20.0\n\nresult = cq.Workplane('XY').circle(diameter/2).extrude(height)\nshow_object(result)",
+  "parameters": {
+    "height": {"type": "float", "default": 50, "min": 10, "max": 200, "step": 5, "description": "Cylinder height mm"},
+    "diameter": {"type": "float", "default": 20, "min": 5, "max": 100, "step": 1, "description": "Cylinder diameter mm"}
+  },
+  "description": "A cylinder",
+  "tags": ["cylinder"]
+}
+CORRECTED:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nheight = 50.0\ndiameter = 20.0\n\nresult = cq.Workplane('XY').circle(diameter/2).extrude(height)",
+  "parameters": {
+    "height": {"type": "float", "default": 50, "min": 10, "max": 200, "step": 5, "description": "Cylinder height mm"},
+    "diameter": {"type": "float", "default": 20, "min": 5, "max": 100, "step": 1, "description": "Cylinder diameter mm"}
+  },
+  "description": "A simple cylinder",
+  "tags": ["cylinder", "basic"]
+}
+
+---
+EXAMPLE 4 – Flange with bolt holes (positive: polarArray + hole)
+---
+User: "A pipe flange, 150mm OD, 100mm ID, 10mm thick, with 8 bolt holes on a 125mm PCD"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nouter_diameter = 150.0\ninner_diameter = 100.0\nthickness = 10.0\nbolt_hole_count = 8\nbolt_circle_diameter = 125.0\nbolt_hole_diameter = 10.0\n\n# Flange base (annular shape via extrude with two circles)\nflange = cq.Workplane('XY').circle(outer_diameter/2).circle(inner_diameter/2).extrude(thickness)\n\n# Bolt holes using polar array\nflange = (flange\n    .faces('>Z')\n    .workplane()\n    .polarArray(bolt_circle_diameter/2, 0, 360, bolt_hole_count)\n    .hole(bolt_hole_diameter))\n\nresult = flange",
+  "parameters": {
+    "outer_diameter": {"type": "float", "default": 150.0, "min": 50, "max": 500, "step": 5, "description": "Outer diameter mm"},
+    "inner_diameter": {"type": "float", "default": 100.0, "min": 20, "max": 480, "step": 5, "description": "Inner bore diameter mm"},
+    "thickness": {"type": "float", "default": 10.0, "min": 2, "max": 30, "step": 1, "description": "Flange thickness mm"},
+    "bolt_hole_count": {"type": "int", "default": 8, "min": 4, "max": 20, "step": 1, "description": "Number of bolt holes"},
+    "bolt_circle_diameter": {"type": "float", "default": 125.0, "min": 30, "max": 480, "step": 5, "description": "Bolt circle diameter (PCD) mm"},
+    "bolt_hole_diameter": {"type": "float", "default": 10.0, "min": 4, "max": 30, "step": 0.5, "description": "Bolt hole diameter mm"}
+  },
+  "description": "A pipe flange with equally spaced bolt holes",
+  "tags": ["flange", "mechanical", "piping"]
+}
+
+---
+EXAMPLE 5 – Pulley with bore and groove (positive: boolean cuts)
+---
+User: "A pulley with diameter 80mm, width 20mm, center bore 10mm, and a belt groove"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\npulley_diameter = 80.0\npulley_width = 20.0\nbore_diameter = 10.0\ngroove_depth = 5.0\ngroove_width = 4.0\n\n# Main pulley cylinder\npulley = cq.Workplane('XY').circle(pulley_diameter/2).extrude(pulley_width)\n\n# Center bore (slightly longer to avoid coplanar errors)\nbore = cq.Workplane('XY').circle(bore_diameter/2).extrude(pulley_width + 2)\nbore = bore.translate((0, 0, -1))\n\n# Belt groove (annular ring subtracted from center)\ngroove = (cq.Workplane('XY')\n    .workplane(offset=pulley_width/2 - groove_width/2)\n    .circle(pulley_diameter/2 + 1)\n    .circle(pulley_diameter/2 - groove_depth)\n    .extrude(groove_width))\n\n# Apply cuts\nresult = pulley.cut(bore).cut(groove)",
+  "parameters": {
+    "pulley_diameter": {"type": "float", "default": 80.0, "min": 20, "max": 300, "step": 5, "description": "Outer diameter mm"},
+    "pulley_width": {"type": "float", "default": 20.0, "min": 5, "max": 100, "step": 1, "description": "Pulley width mm"},
+    "bore_diameter": {"type": "float", "default": 10.0, "min": 3, "max": 50, "step": 0.5, "description": "Center bore diameter mm"},
+    "groove_depth": {"type": "float", "default": 5.0, "min": 1, "max": 20, "step": 0.5, "description": "Belt groove depth mm"},
+    "groove_width": {"type": "float", "default": 4.0, "min": 1, "max": 20, "step": 0.5, "description": "Belt groove width mm"}
+  },
+  "description": "A cylindrical pulley with center bore and belt groove",
+  "tags": ["pulley", "mechanical", "rotational"]
+}
+
+---
+EXAMPLE 6 – Shaft with keyway (positive: center + rect + boolean cut)
+---
+User: "A shaft diameter 30mm, length 150mm, with a keyway 8mm wide, 4mm deep along one end"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nshaft_diameter = 30.0\nshaft_length = 150.0\nkeyway_width = 8.0\nkeyway_depth = 4.0\nkeyway_length = 50.0\n\n# Main shaft cylinder\nshaft = cq.Workplane('XY').circle(shaft_diameter/2).extrude(shaft_length)\n\n# Keyway cutter (rectangular block at the correct radial position)\nkeyway_cutter = (cq.Workplane('XY')\n    .center(shaft_diameter/2 - keyway_depth/2, 0)\n    .rect(keyway_depth, keyway_width)\n    .extrude(keyway_length))\n\n# Subtract keyway from shaft\nresult = shaft.cut(keyway_cutter)",
+  "parameters": {
+    "shaft_diameter": {"type": "float", "default": 30.0, "min": 5, "max": 100, "step": 1, "description": "Shaft diameter mm"},
+    "shaft_length": {"type": "float", "default": 150.0, "min": 20, "max": 500, "step": 5, "description": "Shaft length mm"},
+    "keyway_width": {"type": "float", "default": 8.0, "min": 2, "max": 20, "step": 0.5, "description": "Keyway width mm"},
+    "keyway_depth": {"type": "float", "default": 4.0, "min": 1, "max": 15, "step": 0.5, "description": "Keyway depth mm"},
+    "keyway_length": {"type": "float", "default": 50.0, "min": 10, "max": 200, "step": 5, "description": "Keyway length mm"}
+  },
+  "description": "A cylindrical shaft with a rectangular keyway at one end",
+  "tags": ["shaft", "mechanical", "rotational"]
+}
+
+---
+EXAMPLE 7 – Hex head bolt (positive: polygon + extrude + translate)
+---
+User: "An M10 bolt, 50mm long, with a hex head"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nbolt_diameter = 10.0\nbolt_length = 50.0\nhead_diameter = 16.0\nhead_height = 7.0\n\n# Shank cylinder\nshank = cq.Workplane('XY').circle(bolt_diameter/2).extrude(bolt_length)\n\n# Hex head (polygon with 6 sides, circumscribed circle)\nhead = (cq.Workplane('XY')\n    .polygon(6, head_diameter, circumscribed=True)\n    .extrude(head_height))\n\n# Position head on top of shank\nhead = head.translate((0, 0, bolt_length))\n\nresult = shank.union(head)",
+  "parameters": {
+    "bolt_diameter": {"type": "float", "default": 10.0, "min": 3, "max": 30, "step": 0.5, "description": "Bolt shank diameter mm"},
+    "bolt_length": {"type": "float", "default": 50.0, "min": 10, "max": 200, "step": 5, "description": "Shank length mm"},
+    "head_diameter": {"type": "float", "default": 16.0, "min": 5, "max": 50, "step": 1, "description": "Hex head across flats mm"},
+    "head_height": {"type": "float", "default": 7.0, "min": 2, "max": 20, "step": 0.5, "description": "Head height mm"}
+  },
+  "description": "A simplified bolt with cylindrical shank and hex head",
+  "tags": ["bolt", "fastener", "mechanical"]
+}
+
+---
+EXAMPLE 8 – Washer (positive: simple annular extrude)
+---
+User: "A flat washer with OD 25mm, ID 10mm, thickness 2mm"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nouter_diameter = 25.0\ninner_diameter = 10.0\nthickness = 2.0\n\nresult = (cq.Workplane('XY')\n    .circle(outer_diameter/2)\n    .circle(inner_diameter/2)\n    .extrude(thickness))",
+  "parameters": {
+    "outer_diameter": {"type": "float", "default": 25.0, "min": 10, "max": 100, "step": 1, "description": "Outer diameter mm"},
+    "inner_diameter": {"type": "float", "default": 10.0, "min": 2, "max": 90, "step": 0.5, "description": "Inner hole diameter mm"},
+    "thickness": {"type": "float", "default": 2.0, "min": 0.5, "max": 10, "step": 0.5, "description": "Washer thickness mm"}
+  },
+  "description": "A simple flat washer",
+  "tags": ["washer", "spacer", "mechanical"]
+}
+
+---
+EXAMPLE 9 – Hollow cylinder (positive: boolean cut for tube)
+---
+User: "A hollow cylinder with outer diameter 60mm, inner diameter 50mm, height 80mm"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nouter_diameter = 60.0\ninner_diameter = 50.0\ncylinder_height = 80.0\n\n# Create outer cylinder\nouter = cq.Workplane('XY').circle(outer_diameter/2).extrude(cylinder_height)\n\n# Create inner cylinder and cut it from outer to make a tube\ninner = cq.Workplane('XY').circle(inner_diameter/2).extrude(cylinder_height + 2)\ninner = inner.translate((0, 0, -1))\n\nresult = outer.cut(inner)",
+  "parameters": {
+    "outer_diameter": {"type": "float", "default": 60.0, "min": 20, "max": 200, "step": 5, "description": "Outer diameter mm"},
+    "inner_diameter": {"type": "float", "default": 50.0, "min": 10, "max": 180, "step": 5, "description": "Inner diameter mm"},
+    "cylinder_height": {"type": "float", "default": 80.0, "min": 10, "max": 300, "step": 5, "description": "Height mm"}
+  },
+  "description": "A hollow cylinder created by boolean cutting",
+  "tags": ["cylinder", "hollow", "tube"]
+}
+
+---
+EXAMPLE 10 – Electronics enclosure with vent slots (positive: shell + slot2D)
+---
+User: "An electronics enclosure with vents, 120x80x50mm, 2mm walls"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nlength = 120.0\nwidth = 80.0\nheight = 50.0\nwall = 2.0\nvent_slot_width = 3.0\nvent_slot_length = 10.0\n\n# Outer shell\nouter = cq.Workplane('XY').box(length, width, height, centered=True)\n\n# Inner cavity (smaller, shifted up to create open bottom)\ninner = cq.Workplane('XY').box(length - 2*wall, width - 2*wall, height - wall, centered=True)\ninner = inner.translate((0, 0, wall/2))\n\n# Hollow enclosure\nenclosure = outer.cut(inner)\n\n# Vent slots on one side (simplified: three slots on front face)\nfor i in range(3):\n    slot = (cq.Workplane('XY')\n        .workplane(offset=length/2)\n        .center(0, (i - 1) * width/4)\n        .slot2D(vent_slot_length, vent_slot_width, 0)\n        .extrude(5))\n    enclosure = enclosure.cut(slot)\n\nresult = enclosure",
+  "parameters": {
+    "length": {"type": "float", "default": 120.0, "min": 30, "max": 300, "step": 5, "description": "Enclosure length mm"},
+    "width": {"type": "float", "default": 80.0, "min": 30, "max": 300, "step": 5, "description": "Enclosure width mm"},
+    "height": {"type": "float", "default": 50.0, "min": 10, "max": 200, "step": 5, "description": "Enclosure height mm"},
+    "wall": {"type": "float", "default": 2.0, "min": 1, "max": 6, "step": 0.5, "description": "Wall thickness mm"},
+    "vent_slot_width": {"type": "float", "default": 3.0, "min": 1, "max": 10, "step": 0.5, "description": "Vent slot width mm"},
+    "vent_slot_length": {"type": "float", "default": 10.0, "min": 5, "max": 30, "step": 1, "description": "Vent slot length mm"}
+  },
+  "description": "An electronics enclosure with vent slots",
+  "tags": ["enclosure", "housing", "electronics"]
+}

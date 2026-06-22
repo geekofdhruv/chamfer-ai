@@ -1,0 +1,9 @@
+DOCKER EXECUTION ADDITIONAL CHECKS:
+
+After executing the CadQuery script and exporting the STL/STEP/GLB files:
+
+1. Verify that the exported files exist and are > 500 bytes.
+2. (Optional) Check that the solid is not empty:
+   In the Python wrapper that runs the user script, after execution:
+   if result.val().IsNull(): raise ValueError("Generated geometry is empty")
+3. If a geometry check fails, treat it as an execution error and feed the message back to the retry loop.

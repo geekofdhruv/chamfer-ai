@@ -1,0 +1,178 @@
+# CADQUERY API REFERENCE FOR VIBECAD
+
+## CORE CONCEPTS
+- CadQuery builds 3D models by creating a Workplane (2D sketch plane), drawing profiles, and extruding/revolving/lofting them into solids.
+- Operations are chained: `result = cq.Workplane("XY").box(10,20,30).edges("|Z").fillet(2)`
+- All dimensions are in millimeters.
+- The final geometry must be assigned to the variable `result`.
+
+## ESSENTIAL IMPORT
+`import cadquery as cq`
+
+## WORKPLANE CREATION
+- `cq.Workplane("XY")` — sketch on XY plane (Z is up)
+- Other planes: `"XZ"`, `"YZ"`, `"front"`, `"back"`, `"left"`, `"right"`, `"top"`, `"bottom"`
+- On existing faces: `.faces(">Z").workplane()` — start a sketch on the selected face
+
+## 2D SKETCHING (on a workplane)
+- `.circle(radius)` — centered circle
+- `.rect(width, height)` — centered rectangle
+- `.polygon(nSides, diameter)` — regular polygon (circumscribed circle diameter)
+- `.slot2D(length, diameter, angle=0)` — slot/elongated hole
+- `.ellipse(x_radius, y_radius)` — ellipse
+- `.moveTo(x, y)` — begin a custom wire/profile
+- `.lineTo(x, y)` — add a line segment to custom wire
+- `.hLine(distance)` — horizontal line from current position
+- `.vLine(distance)` — vertical line from current position
+- `.close()` — close the custom wire (REQUIRED before `.extrude()`)
+- `.threePointArc(p1, p2)` — arc through three points
+- `.spline(points)` — spline through list of (x,y) tuples
+- `.mirrorX()` / `.mirrorY()` — mirror the sketch
+
+## 3D PRIMITIVES (shortcuts, created at the current workplane location)
+- `.box(length, width, height, centered=True)` — centered box (use centered=True)
+- `.cylinder(height, radius)` — centered cylinder
+- `.sphere(radius)` — centered sphere
+- `.cone(height, radius1, radius2)` — cone/frustum (radius1=bottom, radius2=top)
+- `.torus(radius1, radius2)` — ring/torus (radius1=major, radius2=minor). NOTE: may create zero-volume geometry in some CadQuery versions; prefer building torus-like shapes with revolve or sweep if this fails.
+
+## CONVERTING 2D TO 3D
+- `.extrude(distance, both=False)` — push sketch perpendicular to workplane (both=True extrudes symmetrically)
+- `.revolve(angle, axisStart, axisEnd)` — revolve sketch around axis. Example: `.revolve(360, (0,0,0), (0,0,1))` for Z-axis. NOTE: 360° revolve of closed profile may create zero-volume; use 359° or ensure profile is open on one side if issues occur.
+- `.sweep(path)` — sweep sketch along a path wire (advanced, use carefully)
+- `.loft(profiles)` — blend between multiple sketches (advanced)
+- `.cutThruAll()` — cut through entire solid from selected face
+- `.hole(diameter, depth=None)` — create hole on selected face; depth=None means through-all
+
+## SELECTING GEOMETRY (for further operations)
+- `.faces(selector)` — select faces. Examples: `">Z"` (top face), `"<Z"` (bottom face), `"|Z"` (faces parallel to Z axis), `"#Z"` (perpendicular to Z)
+- `.edges(selector)` — select edges. Examples: `"|Z"` (edges parallel to Z), `">Z"` (top edges), `"%CIRCLE"` (circular edges)
+- `.vertices(selector)` — select vertices
+- `.workplane()` — create a new workplane on the selected face (used after `.faces()` before sketching/holing)
+- `.workplane(offset=z)` — create workplane offset by z distance from current face
+- `.center(x, y)` — move the workplane origin to (x,y) relative to current position
+- Combine selectors with `'and'`, `'or'`, `'not'` (e.g., `">X and <Z"`)
+
+## BOOLEAN OPERATIONS
+- `.cut(solid)` — subtract another solid (for holes, grooves, cutouts)
+- `.union(solid)` — merge with another solid (use sparingly; prefer single-profile construction to avoid topology issues)
+- `.intersect(solid)` — keep only overlapping volume
+- **CRITICAL**: When cutting holes, make the cutting solid slightly longer than the target to avoid coplanar face errors: `hole = cq.Workplane('XY').circle(r).extrude(height+2); hole = hole.translate((0,0,-1)); result = base.cut(hole)`
+
+## TRANSFORMATIONS
+- `.translate((x, y, z))` — ONE tuple argument, NOT three separate floats
+- `.rotate((x1,y1,z1), (x2,y2,z2), angleDegrees)` — rotate around axis from point1 to point2
+- `.mirror((x,y,z), (nx,ny,nz))` — mirror across plane defined by point and normal
+
+## PATTERNS / ARRAYS
+- `.polarArray(radius, startAngle, angle, count, fill=True)` — circular pattern around origin
+- `.rectArray(xSpacing, ySpacing, nx, ny, fill=True)` — rectangular grid (absolute spacing)
+- `.rarray(xSpacing, ySpacing, nx, ny)` — relative rectangular array (use BEFORE extruding, on 2D sketch)
+- `.pushPoints([(x1,y1), (x2,y2), ...])` — place features at specific points
+
+## FILLETS & CHAMFERS (ALWAYS LAST — after all cuts and holes)
+- `.edges(selector).fillet(radius)` — round edges. **CRITICAL**: radius must be LESS than half the adjacent edge length/thickness or it will fail with BRep error
+- `.faces(selector).edges().fillet(radius)` — fillet edges of selected face
+- `.edges(selector).chamfer(length, angle=None)` — bevel edges
+- If fillet fails, remove it entirely or reduce radius to 1.0
+
+## HOLES & CUTOUTS
+- `.faces(">Z").workplane().hole(diameter)` — simple through-hole on top face
+- `.faces(">Z").workplane().rarray(xSpacing, ySpacing, nx, ny).hole(diameter)` — array of holes
+- `.faces(">Z").workplane().polarArray(radius, 0, 360, count).hole(diameter)` — circular bolt pattern
+- `.cboreHole(dia, cbore_dia, cbore_depth)` — counterbore hole
+- `.cskHole(dia, csk_dia, csk_angle)` — countersunk hole
+
+## SHELL / HOLLOW
+- `.shell(thickness)` — hollow out a solid, leaving walls of specified thickness (use on already-created solid)
+
+## WORKING WITH MULTIPLE BODIES
+- `.newObject([solid1, solid2])` — create new Workplane from list of solids
+- `.combineSolids()` — combine all solids in current Workplane
+- `.cutEach()` — cut each solid in the Workplane with a tool
+
+## MEASURING (for debugging, not in final code)
+- `solid.val().Volume()` — volume in mm³
+- `solid.val().BoundingBox()` — bounding box dimensions
+- `solid.val().IsNull()` — true if empty/invalid geometry
+
+## CRITICAL CODE RULES
+1. Every adjustable parameter must be a Python variable at the top (e.g., `length = 100.0`)
+2. Assign the final solid to variable `result`
+3. Do NOT call `show_object()`, `display()`, or any exporters (`exportStl`, `exportStep`)
+4. Only import `cadquery as cq` (and `math` if needed for calculations)
+5. Do not write to files or use network
+6. Ensure geometry is manifold (no zero-volume edges, no overlapping faces)
+7. Build order: base body → cuts/holes → fillets/chamfers LAST
+8. If a hole or cut doesn't go through completely, extend the cutting solid slightly beyond the target
+9. `.translate()` takes ONE tuple: `.translate((x, y, z))` — NOT `.translate(x, y, z)`
+10. `.rotate()` takes `(start_point, end_point, angle)`: `.rotate((0,0,0), (0,0,1), 90)` — NOT separate floats
+11. For circular edges, use `%CIRCLE` selector, not direction selectors
+12. `.close()` is REQUIRED before `.extrude()` when drawing custom profiles with `.moveTo()` / `.lineTo()`
+
+## COMMON PATTERNS
+
+### 1. Box with holes (rectangular array)
+```python
+box = cq.Workplane('XY').box(length, width, height)
+box = box.faces(">Z").workplane().rarray(x_spacing, y_spacing, nx, ny).hole(diameter)
+result = box
+```
+
+### 2. Cylinder with axial hole (boolean cut)
+```python
+cyl = cq.Workplane('XY').circle(outer_radius).extrude(height)
+hole = cq.Workplane('XY').circle(inner_radius).extrude(height + 2)
+hole = hole.translate((0, 0, -1))
+result = cyl.cut(hole)
+```
+
+### 3. Flange with bolt circle (polar array)
+```python
+flange = cq.Workplane('XY').circle(outer_radius).circle(inner_radius).extrude(thickness)
+flange = flange.faces(">Z").workplane().polarArray(bolt_circle_radius, 0, 360, bolt_count).hole(bolt_diameter)
+result = flange
+```
+
+### 4. Pulley with groove (boolean cuts)
+```python
+pulley = cq.Workplane('XY').circle(outer_radius).extrude(width)
+bore = cq.Workplane('XY').circle(bore_radius).extrude(width + 2).translate((0, 0, -1))
+groove = cq.Workplane('XY').workplane(offset=groove_z).circle(outer_radius + 1).circle(outer_radius - groove_depth).extrude(groove_width)
+result = pulley.cut(bore).cut(groove)
+```
+
+### 5. Hex head bolt (polygon + extrude)
+```python
+shank = cq.Workplane('XY').circle(shank_radius).extrude(shank_length)
+head = cq.Workplane('XY').polygon(6, head_diameter, circumscribed=True).extrude(head_height)
+head = head.translate((0, 0, shank_length))
+result = shank.union(head)
+```
+
+### 6. Hollow box/enclosure (shell with boolean cuts)
+```python
+outer = cq.Workplane('XY').box(length, width, height, centered=True)
+inner = cq.Workplane('XY').box(length - 2*wall, width - 2*wall, height - wall, centered=True)
+inner = inner.translate((0, 0, wall/2))
+result = outer.cut(inner)
+```
+
+### 7. Keyway on shaft (rectangular cut)
+```python
+shaft = cq.Workplane('XY').circle(radius).extrude(length)
+cutter = cq.Workplane('XY').center(radius - depth/2, 0).rect(depth, width).extrude(keyway_length)
+result = shaft.cut(cutter)
+```
+
+### 8. Revolved profile (lathe/turning shape)
+```python
+profile = (cq.Workplane('XZ')
+    .moveTo(0, 0)
+    .lineTo(outer_radius, 0)
+    .lineTo(outer_radius, height)
+    .lineTo(inner_radius, height)
+    .lineTo(inner_radius, 0)
+    .close())
+result = profile.revolve(359, (0,0,0), (0,0,1))  # 359° to avoid zero-volume on 360°
+```

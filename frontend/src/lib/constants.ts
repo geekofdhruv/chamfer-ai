@@ -3,16 +3,12 @@ import type { Provider } from '@/types';
 export const API_URL = '';
 
 export const PROVIDERS: Provider[] = [
-  { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', desc: 'Fast & cheap · 1M ctx' },
-  { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', desc: 'Pro reasoning · 1M ctx' },
-  { id: 'qwen3p7-plus', name: 'Qwen 3.7 Plus', desc: 'Vision · 262K ctx' },
-  { id: 'kimi-k2p6', name: 'Kimi K2.6', desc: 'Vision · 262K ctx' },
-  { id: 'minimax-m3', name: 'MiniMax M3', desc: 'Vision · 512K ctx' },
-  { id: 'glm-5p1', name: 'GLM 5.1', desc: '202K ctx' },
-  { id: 'glm-5p2', name: 'GLM 5.2', desc: 'Opus-level · 1M ctx' },
-  { id: 'mimo', name: 'MiMo 2.5', desc: 'Vision · 310B (15B active)' },
-  { id: 'mimo-pro', name: 'MiMo 2.5 Pro', desc: '1T (42B active)' },
-  { id: '0g', name: 'Qwen 2.5 Omni 7B', desc: '0G Decentralized · Vision' },
+  { id: 'mimo-pro', name: 'MiMo 2.5 Pro', desc: 'Primary · 1T (42B active) · 10M TPM' },
+  { id: 'mimo', name: 'MiMo 2.5', desc: 'Vision · 310B (15B active) · 10M TPM' },
+  { id: 'mimo-flash', name: 'MiMo 2.5 Flash', desc: 'Fast · 100 RPM · 10M TPM' },
+  { id: 'groq', name: 'Groq Qwen3-32B', desc: 'Fast · 6K TPM limit' },
+  { id: 'groq-vision', name: 'Groq Llama 4 Scout', desc: 'Vision · 6K TPM limit' },
+  { id: '0g', name: '0G Compute TEE', desc: 'Decentralized · Verified inference' },
 ];
 
 export function getProviderDisplayName(id: string): string {

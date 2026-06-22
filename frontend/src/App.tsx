@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { PanelLeft, Eye } from 'lucide-react';
-import type { Parameter, Message, InspectionData, ClarificationOption, WorkflowStep } from '@/types';
+import type { ParameterSchema, Message, InspectionData, ClarificationOption, WorkflowStep } from '@/types';
 import { API_URL } from '@/lib/constants';
 
 // Components
@@ -33,8 +33,8 @@ export default function App() {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [provider, setProvider] = useState('mimo');
-  const [parameters, setParameters] = useState<Parameter[]>([]);
+  const [provider, setProvider] = useState('mimo-pro');
+  const [parameters, setParameters] = useState<Record<string, ParameterSchema>>({});
   const [currentCode, setCurrentCode] = useState('');
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [stlObjectUrl, setStlObjectUrl] = useState<string | null>(null);
@@ -266,6 +266,7 @@ export default function App() {
           dimViews: Object.keys(liveDimViews).length > 0 ? liveDimViews : (finalData.dimViews || {}),
           visionVerified: finalData.visionVerified,
           visionFeedback: visionFeedback || undefined,
+          teeProof: finalData.teeProof,
           steps: liveSteps,
         };
         setMessages(prev => {
@@ -281,7 +282,11 @@ export default function App() {
         if (finalData.parameters) {
           setParameters(finalData.parameters);
           const vals: Record<string, number> = {};
-          finalData.parameters.forEach((p: Parameter) => { vals[p.name] = p.default; });
+          Object.entries(finalData.parameters).forEach(([name, schema]) => {
+            if (typeof schema.default === 'number') {
+              vals[name] = schema.default;
+            }
+          });
           setParamValues(vals);
         }
         setStlBase64(finalData.stlBase64);
@@ -448,6 +453,11 @@ export default function App() {
                                   <Eye className="h-3 w-3" /> Vision-verified
                                 </span>
                               )}
+                              {msg.teeProof && (
+                                <span className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-400/10 rounded-full px-2.5 py-1">
+                                  🔒 TEE Verified (0x{msg.teeProof.signature.slice(0, 12)}...)
+                                </span>
+                              )}
                               {msg.bestEffort && (
                                 <span className="inline-flex items-center gap-1.5 text-[10px] text-yellow-400 bg-yellow-400/10 rounded-full px-2.5 py-1">
                                   Best effort
@@ -512,11 +522,11 @@ export default function App() {
                   )}
 
                   {/* Parameters */}
-                  {parameters.length > 0 && (
+                  {Object.keys(parameters).length > 0 && (
                     <div className="p-4 border-b border-adam-neutral-700">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider">Parameters</h3>
-                        <span className="text-[10px] text-adam-text-tertiary">{parameters.length} params</span>
+                        <span className="text-[10px] text-adam-text-tertiary">{Object.keys(parameters).length} params</span>
                       </div>
                       <ParameterPanel parameters={parameters} values={paramValues} onChange={handleParamChange} />
                       {isParamUpdating && (
@@ -544,7 +554,7 @@ export default function App() {
                   {currentCode && <CodeSection code={currentCode} />}
 
                   {/* Empty State */}
-                  {parameters.length === 0 && !currentCode && (
+                  {Object.keys(parameters).length === 0 && !currentCode && (
                     <div className="flex-1 flex items-center justify-center p-6">
                       <div className="text-center">
                         <div className="w-10 h-10 rounded-full bg-adam-neutral-800 flex items-center justify-center mx-auto mb-3">

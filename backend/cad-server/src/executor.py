@@ -50,7 +50,7 @@ def execute_cadquery(
         import sys as _sys
         _sys.path.insert(0, {str(Path(__file__).parent.resolve())!r})
         from snapshot import render_snapshots as _render_svg
-        _snap_paths = _render_svg(r, {str(snapshot_dir)!r})
+        _snap_paths = _render_svg(result, {str(snapshot_dir)!r})
         _snaps = {{}}
         for _view, _path in _snap_paths.items():
             with open(_path, "r") as _sf:
@@ -101,22 +101,22 @@ import json
 
 try:
     exec(open({str(user_code_path)!r}).read())
-    if "r" not in dir():
-        raise ValueError("Code did not define variable 'r'")
+    if "result" not in dir():
+        raise ValueError("Code did not define variable 'result'")
 
     # Export files
-    cq.exporters.export(r, {str(stl_path)!r})
-    cq.exporters.export(r, {str(step_path)!r})
+    cq.exporters.export(result, {str(stl_path)!r})
+    cq.exporters.export(result, {str(step_path)!r})
 
     try:
         asm = cq.Assembly()
-        asm.add(r, name="model")
+        asm.add(result, name="model")
         asm.save({str(glb_path)!r}, "GLTF")
     except Exception:
         pass
 
     # Run validation
-    val = r.val()
+    val = result.val()
     validation = {{
         "volume": round(val.Volume(), 3),
         "surface_area": round(val.Area(), 3),
@@ -146,7 +146,7 @@ try:
     try:
         sys.path.insert(0, {str(Path(__file__).parent.resolve())!r})
         from inspector import inspect_geometry
-        inspection = inspect_geometry(r)
+        inspection = inspect_geometry(result)
         with open({str(inspection_path)!r}, "w") as inf:
             json.dump(inspection, inf)
     except Exception as ie:
@@ -167,6 +167,24 @@ except Exception as e:
 
         if result.returncode != 0:
             return {"success": False, "error": result.stderr.strip() or "Unknown error"}
+
+        # ── Docker execution checks ──
+        # 1. Verify exported files exist and are > 500 bytes
+        if not stl_path.exists() or stl_path.stat().st_size < 500:
+            return {"success": False, "error": "STL export failed or file too small (likely empty geometry)"}
+        if not step_path.exists() or step_path.stat().st_size < 500:
+            return {"success": False, "error": "STEP export failed or file too small (likely empty geometry)"}
+
+        # 2. Check validation for empty geometry
+        if validation_path.exists():
+            try:
+                validation = json.loads(validation_path.read_text())
+                if validation.get("has_volume") is False:
+                    return {"success": False, "error": "Generated geometry has zero volume — model is not a valid solid"}
+                if validation.get("volume", 1) <= 0:
+                    return {"success": False, "error": "Generated geometry has zero volume — model is not a valid solid"}
+            except Exception:
+                pass
 
         stl_bytes = stl_path.read_bytes() if stl_path.exists() else None
         step_bytes = step_path.read_bytes() if step_path.exists() else None

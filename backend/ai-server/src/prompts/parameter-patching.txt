@@ -1,0 +1,24 @@
+PARAMETER PATCHING (no AI call):
+
+Given:
+- code: string of Python code
+- paramName: the variable name to change
+- newValue: the new number/string
+
+Steps:
+1. Construct a regex to match the variable assignment:
+   pattern = /^(\s*paramName\s*=\s*)[^\n#]+/m
+   (This matches up to the line comment or end of line.)
+
+2. Replace with: $1newValue
+
+3. If the line has an inline comment (e.g., "# 12 [6:1:24]"), you may optionally preserve or remove it; but with JSON parameters the comment is unnecessary and can be dropped.
+
+4. Ensure the newValue is of the correct type (int/float) as defined in the JSON parameters schema.
+
+5. Return the patched code string.
+
+Example:
+code = "length = 100  # mm"
+After updateParameter(code, "length", 150):
+code = "length = 150"

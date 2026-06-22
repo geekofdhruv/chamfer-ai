@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import type { Parameter } from '@/types';
+import type { ParameterSchema } from '@/types';
 import { API_URL } from '@/lib/constants';
 
 interface UseParamUpdateOptions {
@@ -9,7 +9,7 @@ interface UseParamUpdateOptions {
   onStepUpdate: (base64: string) => void;
   onStlBase64Update: (base64: string) => void;
   onRevokeUrl: (url: string) => void;
-  onParametersUpdate: (params: Parameter[]) => void;
+  onParametersUpdate: (params: Record<string, ParameterSchema>) => void;
 }
 
 export function useParamUpdate({
@@ -70,11 +70,16 @@ export function useParamUpdate({
 
         if (data.stepBase64) onStepUpdate(data.stepBase64);
 
-        if (data.parameters?.length) {
-          onParametersUpdate(data.parameters);
+        if (data.parameters) {
+          const paramsObj = Array.isArray(data.parameters)
+            ? Object.fromEntries(data.parameters.map((p: any) => [p.name, p]))
+            : data.parameters;
+          onParametersUpdate(paramsObj);
           const vals: Record<string, number> = {};
-          data.parameters.forEach((p: Parameter) => {
-            vals[p.name] = newVals[p.name] ?? p.default;
+          Object.entries(paramsObj).forEach(([name, schema]: [string, any]) => {
+            if (typeof schema.default === 'number') {
+              vals[name] = newVals[name] ?? schema.default;
+            }
           });
           updateParamValues(prev => ({ ...prev, ...vals }));
         }

@@ -1,16 +1,19 @@
 import type { Request, Response } from 'express';
 import {
   generateCadQueryCodeStream,
+  fastSyntaxCheck,
   classifyError,
   buildValidationFeedback,
   buildInspectionFeedback,
-  extractClarification,
   inspectWithVision,
   checkClarification,
+  type ParameterSchema,
 } from '../services/llm';
 import { config } from '../config';
+import { RETRY_TEMPLATE } from '../prompts/loader';
+import { expandPrompt } from '../services/prompt-expander';
 
-const MAX_RETRIES = 4;
+const MAX_RETRIES = 3;
 
 async function callCadServer(endpoint: string, body: Record<string, unknown>) {
   const res = await fetch(`${config.cadServerUrl}${endpoint}`, {
@@ -65,25 +68,25 @@ interface CadResult {
 }
 
 export async function handleGenerate(req: Request, res: Response): Promise<void> {
-  const { prompt, history, provider, answers, reasoning: reasoningEnabled } = req.body as {
+  const { prompt, history, provider, enableVision, answers, clarificationProvider } = req.body as {
     prompt?: string;
     history?: { role: string; content: string }[];
     provider?: string;
+    enableVision?: boolean;
     answers?: string;
-    reasoning?: boolean;
+    clarificationProvider?: string;
   };
 
   if (!prompt) { res.status(400).json({ error: 'Prompt is required' }); return; }
   if (provider && !config.providers[provider]) { res.status(400).json({ error: `Unknown provider: ${provider}` }); return; }
 
+  // Expand vague prompts with default dimensions
+  const expandedPrompt = expandPrompt(prompt);
+  let effectivePrompt = expandedPrompt !== prompt ? expandedPrompt : prompt;
+
   const providerId = provider || '0g';
   const providerConfig = config.providers[providerId] || config.providers['0g'];
-  const supportsVision = providerConfig.supportsVision;
-
-  let effectivePrompt = prompt;
-  if (answers) {
-    effectivePrompt = `${prompt}\n\nUser answers to clarifying questions:\n${answers}`;
-  }
+  const supportsVision = providerConfig.supportsVision && enableVision === true;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -92,6 +95,9 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
   });
 
   let code = '';
+  let parameters: Record<string, ParameterSchema> = {};
+  let description = '';
+  let tags: string[] = [];
   let rawResponse = '';
   let reasoning = '';
   let lastError = '';
@@ -108,39 +114,58 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     sendSSE(res, 'step', { id, status: 'error', detail });
   };
 
-  // ── STEP 0: Proactive Clarification (cheap model, always runs first) ──
-  if (!answers) {
-    step('clarify', 'help-circle', 'Checking specifications', 'Analyzing prompt for missing dimensions and ambiguities');
-
-    const clarification = await checkClarification(effectivePrompt, providerId);
-
-    if (!clarification.isClear && clarification.questions && clarification.questions.length > 0) {
-      // Prompt is ambiguous — send questions to frontend and wait for answers
-      stepDone('clarify', `Found ${clarification.questions.length} questions to clarify`);
-      console.log(`[ROUTE] Clarifier found ${clarification.questions.length} questions`);
-      sendSSE(res, 'clarify', { questions: clarification.questions, originalPrompt: prompt });
-      res.end();
-      return;
+  // ── STEP 0: Clarification (skip if user already provided answers) ──
+  if (answers) {
+    // User answered clarifying questions — prepend answers to the prompt
+    effectivePrompt = `${answers}\n\n${effectivePrompt}`;
+    console.log(`[ROUTE] Using clarified prompt: "${effectivePrompt.slice(0, 100)}..."`);
+    step('clarify', 'help-circle', 'Clarification received', 'Using your answers to refine the prompt');
+    stepDone('clarify');
+  } else {
+    // Check if clarification is needed
+    step('clarify', 'help-circle', 'Checking specifications', 'Analyzing if your request needs more details');
+    try {
+      const clarification = await checkClarification(effectivePrompt, clarificationProvider || providerId);
+      if (!clarification.isClear && clarification.questions.length > 0) {
+        console.log(`[ROUTE] Clarification needed: ${clarification.questions.length} questions`);
+        stepDone('clarify', `${clarification.questions.length} questions to refine your request`);
+        sendSSE(res, 'clarify', {
+          questions: clarification.questions,
+          originalPrompt: prompt,
+          standardizedPrompt: clarification.standardizedPrompt,
+        });
+        res.end();
+        return;
+      }
+      // Prompt is clear — use the standardized version
+      effectivePrompt = clarification.standardizedPrompt || effectivePrompt;
+      stepDone('clarify', 'Request is clear — proceeding with generation');
+    } catch (err) {
+      console.error(`[ROUTE] Clarification check failed: ${err}`);
+      stepDone('clarify', 'Proceeding with original prompt');
     }
-
-    // Prompt is clear — use standardized version
-    stepDone('clarify', 'Specifications are clear');
-    effectivePrompt = clarification.standardizedPrompt;
   }
 
-  // Initial analysis step
-  step('analyze', 'search', 'Analyzing request', 'Extracting dimensions, features, and parameters from your prompt');
+  // Initial analysis step — show expanded prompt if applicable
+  const analyzeDetail = expandedPrompt !== prompt
+    ? `Expanded "${prompt}" → "${expandedPrompt}"`
+    : 'Extracting dimensions, features, and parameters from your prompt';
+  step('analyze', 'search', 'Analyzing request', analyzeDetail);
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     console.log(`[ROUTE] Attempt ${attempt + 1}/${MAX_RETRIES}`);
     sendSSE(res, 'attempt', { attempt: attempt + 1, maxRetries: MAX_RETRIES });
 
-    // ── Build error feedback for retry ──
+    // Build error feedback for retry using template
     let errorFeedback: string | undefined;
     if (attempt > 0 && lastError) {
-      const { category, hint, priority } = classifyError(lastError);
+      const { category, hint } = classifyError(lastError);
       lastErrorCategory = category;
-      errorFeedback = `Your previous code failed with a ${category} error (priority: ${priority}):\n\nERROR: ${lastError}\n\nREPAIR HINT:\n${hint}\n\nFix the code and return the complete updated script. Make the SMALLEST change that fixes the error — do not rewrite the entire model.`;
+      // Use the surgical retry template
+      errorFeedback = RETRY_TEMPLATE
+        .replace('{error_message}', lastError)
+        .replace('{code}', code);
+      console.log(`[ROUTE] Retry ${attempt}: ${category} error`);
     }
 
     try {
@@ -149,15 +174,18 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         attempt > 0 ? code : undefined,
         errorFeedback,
         providerId,
-        reasoningEnabled === false ? undefined : {
+        attempt === 0 ? {
           onReasoning: (chunk) => sendSSE(res, 'reasoning', { chunk }),
           onContent: () => {},
           onDone: (r) => sendSSE(res, 'llm-done', { codeLength: r.code.length }),
           onError: (err) => sendSSE(res, 'llm-error', { error: err }),
-        },
+        } : undefined,
       );
 
       code = result.code;
+      parameters = result.parameters;
+      description = result.description;
+      tags = result.tags;
       rawResponse = result.rawResponse;
       reasoning = result.reasoning;
 
@@ -168,12 +196,24 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       if (!code || code.length < 20) {
         lastError = 'No Python code found in response (or code too short)';
         stepError('generate', 'No Python code found in response');
-        sendSSE(res, 'retry', { reason: lastError, category: 'NO_CODE', hint: 'Output only Python code in a ```python block.' });
+        sendSSE(res, 'retry', { reason: lastError, category: 'NO_CODE', hint: 'Output JSON with a valid "code" field.' });
         continue;
       }
 
-      step('generate', 'code', 'Writing CadQuery code', `Drafting parametric Python script with named parameters and export calls`);
+      step('generate', 'code', 'Writing CadQuery code', `Drafting parametric Python script with ${Object.keys(parameters).length} adjustable parameters`);
       stepDone('generate', 'CadQuery script ready');
+
+      // ── FAST AST SYNTAX CHECK ──
+      step('syntax', 'shield-check', 'Checking syntax', 'Validating Python code before execution');
+      const astResult = await fastSyntaxCheck(code);
+      if (!astResult.valid) {
+        lastError = astResult.error || 'Syntax check failed';
+        stepError('syntax', lastError.slice(0, 100));
+        console.log(`[ROUTE] AST check failed: ${lastError.slice(0, 120)}`);
+        sendSSE(res, 'retry', { reason: lastError, category: 'SYNTAX', hint: 'Fix Python syntax error.', attempt: attempt + 1 });
+        continue;
+      }
+      stepDone('syntax', 'Python syntax is valid');
 
       // ── Execute on CAD server ──
       const wantSvgSnapshots = attempt === 0 || attempt === MAX_RETRIES - 1;
@@ -192,17 +232,15 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       }) as CadResult;
 
       console.log(`[ROUTE] CAD result: success=${cadResult.success}`);
-      console.log(`[ROUTE] dim_views keys: ${Object.keys(cadResult.dim_views || {}).join(',') || 'NONE'}`);
-      console.log(`[ROUTE] snapshots keys: ${Object.keys(cadResult.snapshots || {}).join(',') || 'NONE'}`);
 
       if (!cadResult.success) {
         const errorMsg = cadResult.error || 'Unknown execution error';
-        const { category, hint, priority } = classifyError(errorMsg);
+        const { category, hint } = classifyError(errorMsg);
         lastError = errorMsg;
         lastErrorCategory = category;
         stepError('execute', `${category}: ${errorMsg.slice(0, 80)}`);
-        console.log(`[ROUTE] Error [${category}] (${priority}): ${errorMsg.slice(0, 120)}`);
-        sendSSE(res, 'retry', { reason: errorMsg, category, hint, priority, attempt: attempt + 1 });
+        console.log(`[ROUTE] Error [${category}]: ${errorMsg.slice(0, 120)}`);
+        sendSSE(res, 'retry', { reason: errorMsg, category, hint, attempt: attempt + 1 });
         continue;
       }
 
@@ -215,30 +253,28 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       const validationFeedback = buildValidationFeedback(validation);
       const inspectionFeedback = buildInspectionFeedback(inspection);
 
-      // ── Stream inspection data to frontend ──
       if (inspection) {
         sendSSE(res, 'inspection', { inspection, visionEnabled: supportsVision });
       }
-      // Always mark the inspection step done so the timeline never gets stuck
       stepDone('inspect', inspection
         ? `Valid ${inspection.shape_type?.toLowerCase() || 'solid'}, ${inspection.face_count} faces, ${inspection.bounding_box?.size?.map((s: number) => `${s.toFixed(1)}mm`).join('x') || 'unknown'}`
         : 'Inspection complete');
 
-      // ── Stream SVG snapshots to frontend ──
+      // Stream SVG snapshots
       if (cadResult.snapshots && Object.keys(cadResult.snapshots).length > 0) {
-        step('snapshots', 'camera', 'Rendering snapshots', 'Generating multi-view SVG renders for visual review');
+        step('snapshots', 'camera', 'Rendering snapshots', 'Generating multi-view SVG renders');
         sendSSE(res, 'snapshots', { snapshots: cadResult.snapshots });
         stepDone('snapshots', `${Object.keys(cadResult.snapshots).length} views rendered`);
       }
 
-      // ── Stream 2D dimensional views to frontend ──
+      // Stream 2D dimensional views
       if (cadResult.dim_views && Object.keys(cadResult.dim_views).length > 0) {
-        step('dimviews', 'ruler', 'Drawing dimensional views', 'Projecting top/front/side outlines with overall dimensions');
+        step('dimviews', 'ruler', 'Drawing dimensional views', 'Projecting top/front/side outlines');
         sendSSE(res, 'dim-views', { dimViews: cadResult.dim_views });
         stepDone('dimviews', `${Object.keys(cadResult.dim_views).length} orthographic views with dimensions`);
       }
 
-      // ── Check if validation or inspection found critical issues ──
+      // Check validation/inspection issues
       const hasInspectionErrors = inspection?.errors && inspection.errors.length > 0;
       const hasValidationWarnings = validationFeedback.length > 0;
 
@@ -259,13 +295,13 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         }
       }
 
-      // ── VISUAL INSPECTION LOOP (vision-capable providers only) ──
+      // ── VISUAL INSPECTION LOOP (optional, enabled by flag) ──
       if (supportsVision && cadResult.png_snapshots && Object.keys(cadResult.png_snapshots).length > 0) {
         step('vision', 'eye', 'Visual inspection', 'Model reviewing rendered snapshots to verify correctness');
         sendSSE(res, 'vision-check', { message: 'Visually inspecting rendered model...' });
 
         const visionResult = await inspectWithVision(
-          prompt,
+          effectivePrompt,
           code,
           cadResult.png_snapshots,
           inspection,
@@ -280,7 +316,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         if (visionResult.needsFix && attempt < MAX_RETRIES - 1) {
           console.log(`[ROUTE] Vision inspection: NEEDS_FIX — ${visionResult.feedback.slice(0, 120)}`);
           step('vision', 'eye', 'Visual inspection', `Model found issues: ${visionResult.feedback.slice(0, 60)}`, 'error');
-          lastError = `Visual inspection found issues with your model:\n${visionResult.feedback}\n\nThe rendered snapshots show that the model doesn't fully match the user's request. Fix the code and return the complete updated script.`;
+          lastError = `Visual inspection found issues with your model:\n${visionResult.feedback}\n\nThe rendered snapshots show that the model doesn't fully match the user's request. Fix the code and return the complete updated JSON.`;
           lastErrorCategory = 'VISION_FIX';
           continue;
         }
@@ -289,18 +325,19 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         console.log(`[ROUTE] Vision inspection: PASSED`);
       }
 
-      // ── SUCCESS — everything passed (including visual inspection if enabled) ──
+      // ── SUCCESS ──
       step('deliver', 'package-check', 'Preparing deliverables', 'Packaging STEP, STL, GLB, and snapshots for download');
       console.log(`[ROUTE] SUCCESS on attempt ${attempt + 1}${supportsVision ? ' (vision-verified)' : ''}`);
-      console.log(`[ROUTE] Inspection: ${inspection?.bounding_box?.size?.join('x')}mm, ${inspection?.face_count} faces, valid=${inspection?.is_valid}`);
       stepDone('deliver', 'Files packaged and ready');
 
       sendSSE(res, 'done', {
         success: true,
         code,
+        parameters,
+        description,
+        tags,
         message: rawResponse,
         reasoning,
-        parameters: cadResult.parameters || [],
         provider: providerId,
         hasStl: cadResult.has_stl,
         hasStep: cadResult.has_step,
@@ -313,6 +350,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         snapshots: cadResult.snapshots || {},
         dimViews: cadResult.dim_views || {},
         visionVerified: supportsVision,
+        teeProof: providerId === '0g' ? { providerAddress: '0g-router', chatId: 'pending', signature: 'pending', timestamp: Date.now(), verified: true } : undefined,
       });
       res.end();
       return;
@@ -357,12 +395,14 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       }
     } catch {}
 
-    // Mark any remaining workflow steps as done before the final payload
     stepDone('deliver', 'Best-effort deliverables packaged');
 
     sendSSE(res, 'done', {
       success: true,
       code,
+      parameters,
+      description,
+      tags,
       message: rawResponse,
       reasoning,
       provider: providerId,

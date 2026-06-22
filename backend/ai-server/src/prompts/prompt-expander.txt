@@ -1,0 +1,26 @@
+PROMPT EXPANSION RULES (apply before sending to the LLM):
+
+1. If prompt contains only a generic object name (e.g., "a gear", "a box"), expand to:
+   - "a gear" → "a spur gear with 12 teeth, module 2, 10mm thickness"
+   - "a box" → "a 100x60x40mm box with 2mm wall thickness"
+   - "a bracket" → "a right-angle bracket 80x50x5mm with 4 mounting holes"
+   - "a pulley" → "a pulley with 80mm diameter, 20mm width, 10mm bore and a belt groove"
+   - "a washer" → "a flat washer OD 25mm, ID 10mm, 2mm thick"
+   - "a flange" → "a pipe flange 150mm OD, 100mm ID, 10mm thick with 8 bolt holes on 125mm PCD"
+   - "a shaft" → "a cylindrical shaft 30mm diameter, 150mm long with a keyway"
+   - "a bolt" → "an M10 bolt, 50mm long, with a hex head"
+   - "a knob" → "a round knob 40mm diameter, 25mm tall with a D-shaped hole"
+   - "an enclosure" → "an electronics enclosure 120x80x50mm with 2mm wall thickness and vent slots"
+   - "a cylinder" → "a cylinder 50mm diameter, 100mm tall"
+   - "a cone" → "a cone with 30mm base diameter and 60mm height"
+   - "a sphere" → "a sphere with 25mm radius"
+
+2. If no dimensions are given at all, insert "with reasonable default dimensions in millimeters" to nudge the LLM.
+
+3. If units are missing, assume millimeters.
+
+4. For vague descriptions like "a simple part" or "something mechanical", expand to "a mounting bracket with holes and fillets".
+
+5. For image inputs, do not expand; the image itself provides the detail.
+
+6. If the user mentions a brand or standard part (e.g., "M10", "ISO 4762"), keep the standard reference and add reasonable defaults for missing dimensions.

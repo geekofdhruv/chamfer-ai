@@ -1,0 +1,20 @@
+The previous CadQuery code produced this error:
+
+{error_message}
+
+Error classification: {error_class}
+
+Here is the code that failed:
+
+{code}
+
+FIX INSTRUCTIONS based on error type:
+- FILLET_CHAMFER: Remove all .fillet() calls or reduce radius to 1.0. Fillets on thin objects often fail.
+- MISSING_R: The code MUST assign the final model to variable `result`. Add `result = <your_geometry>` as the last line.
+- SYNTAX: Check indentation, colons, parentheses, and quotes.
+- SELECTOR: Use simpler selectors like ">Z", ">X", or .faces().workplane(). Test selectors on a simple box first.
+- BUILD_ORDER: Create a solid first with .extrude() or .box() before calling .cut(), .hole(), or .fillet().
+- WIRE_TOPOLOGY: Build the shape as a single 2D sketch (.moveTo().lineTo().close().extrude()) instead of unioning multiple solids.
+- BOOLEAN_FAILURE: Ensure solids overlap before unioning. Extend cutting tools beyond the target.
+
+Return ONLY a corrected JSON object with keys "code", "parameters", "description", "tags". No thinking text. No explanations. Start with '{' and end with '}'.

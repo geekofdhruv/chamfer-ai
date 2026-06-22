@@ -14,8 +14,8 @@ export const config = {
   cadServerUrl: process.env.CAD_SERVER_URL || 'http://localhost:5000',
   providers: {
     '0g': {
-      baseUrl: 'https://router-api-testnet.integratenetwork.work/v1',
-      model: 'qwen/qwen2.5-omni-7b',
+      baseUrl: 'https://router-api.0g.ai/v1',
+      model: '0GM-1.0-35B-A3B',
       apiKey: process.env.OG_API_KEY || '',
       supportsVision: true,
       maxTokens: 4096,
@@ -25,12 +25,21 @@ export const config = {
       model: 'mimo-v2.5',
       apiKey: process.env.MIMO_API_KEY || '',
       supportsVision: true,
+      maxTokens: 8192,
     },
     'mimo-pro': {
       baseUrl: 'https://api.xiaomimimo.com/v1',
       model: 'mimo-v2.5-pro',
       apiKey: process.env.MIMO_API_KEY || '',
       supportsVision: false,
+      maxTokens: 8192,
+    },
+    'mimo-flash': {
+      baseUrl: 'https://api.xiaomimimo.com/v1',
+      model: 'mimo-v2-flash',
+      apiKey: process.env.MIMO_API_KEY || '',
+      supportsVision: false,
+      maxTokens: 4096,
     },
     'deepseek-v4-flash': {
       baseUrl: FIREWORKS_BASE,
@@ -73,6 +82,20 @@ export const config = {
       model: 'accounts/fireworks/models/kimi-k2p6',
       apiKey: fwKey,
       supportsVision: true,
+    },
+    'groq': {
+      baseUrl: 'https://api.groq.com/openai/v1',
+      model: 'qwen/qwen3-32b',
+      apiKey: process.env.GROQ_API_KEY || '',
+      supportsVision: false,
+      maxTokens: 4096,
+    },
+    'groq-vision': {
+      baseUrl: 'https://api.groq.com/openai/v1',
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      apiKey: process.env.GROQ_API_KEY || '',
+      supportsVision: true,
+      maxTokens: 4096,
     },
   } as Record<string, ProviderConfig>,
 };
