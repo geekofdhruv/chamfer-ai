@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Eye, PanelLeftClose, PanelRightClose, PanelLeftOpen, PanelRightOpen } from 'lucide-react';
+import { Eye } from 'lucide-react';
+import { NutIcon } from '@/components/hardware/NutIcon';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import type { Parameter, Message, InspectionData, ClarificationOption, WorkflowStep } from '@/types';
 import { API_URL } from '@/lib/constants';
@@ -50,8 +51,9 @@ export default function App() {
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const [dimViews, setDimViews] = useState<Record<string, string>>({});
   const [inspection, setInspection] = useState<InspectionData | null>(null);
-  const [collapsed, setCollapsed] = useState({ chat: false, preview: false, right: true });
+  const [collapsed, setCollapsed] = useState({ chat: false, preview: false, right: false });
   const [panelAnimating, setPanelAnimating] = useState(false);
+  const [rotatingKey, setRotatingKey] = useState<'chat' | 'right' | null>(null);
 
   // Refs for collapsible panels
   const chatPanelRef = useRef<PanelImperativeHandle | null>(null);
@@ -64,11 +66,15 @@ export default function App() {
     const willCollapse = !panel.isCollapsed();
     setCollapsed(c => ({ ...c, [key]: willCollapse }));
     setPanelAnimating(true);
+    if (key !== 'preview') setRotatingKey(key);
     window.requestAnimationFrame(() => {
       if (willCollapse) panel.collapse();
       else panel.expand();
     });
-    window.setTimeout(() => setPanelAnimating(false), 700);
+    window.setTimeout(() => {
+      setPanelAnimating(false);
+      if (key !== 'preview') setRotatingKey(null);
+    }, 700);
   }, []);
 
   // Refs for streaming
@@ -538,7 +544,7 @@ export default function App() {
                     title={collapsed.chat ? 'Show chat' : 'Hide chat'}
                     className="absolute top-1/2 left-full -translate-y-1/2 h-7 w-7 glass-hud rounded-md flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
                   >
-                    {collapsed.chat ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                    <NutIcon className="h-4 w-4" spinning={rotatingKey === 'chat'} />
                   </button>
                 </ResizableHandle>
 
@@ -574,7 +580,7 @@ export default function App() {
                     title={collapsed.right ? 'Show inspect' : 'Hide inspect'}
                     className="absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 h-7 w-7 glass-hud rounded-md flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
                   >
-                    {collapsed.right ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
+                    <NutIcon className="h-4 w-4" spinning={rotatingKey === 'right'} />
                   </button>
                 </ResizableHandle>
 
@@ -584,7 +590,7 @@ export default function App() {
                   collapsible
                   collapsedSize={0}
                   minSize={18}
-                  defaultSize={0}
+                  defaultSize={26}
                   maxSize={350}
                   order={3}
                   onResize={size => {
