@@ -107,4 +107,5 @@ export interface RootHashData {
   stl?: string;
   step?: string;
   glb?: string;
+  dimViews?: string;
 }

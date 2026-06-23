@@ -134,7 +134,6 @@ export default function App() {
       content: m.content,
       specifications: m.specifications,
       provider: m.provider,
-      dimViews: m.dimViews,
     }));
     fetch(`${API_URL}${CHAT_ENDPOINTS.SAVE}`, {
       method: 'POST',
@@ -151,6 +150,7 @@ export default function App() {
     stlBase64?: string;
     stepBase64?: string;
     glbBase64?: string;
+    dimViews?: Record<string, string>;
     parameters?: Parameter[];
     inspection?: InspectionData | null;
     boundingBox?: { size?: number[] };
@@ -170,6 +170,7 @@ export default function App() {
         stlBase64: model.stlBase64,
         stepBase64: model.stepBase64,
         glbBase64: model.glbBase64,
+        dimViews: model.dimViews,
         parameters: model.parameters,
         inspection: model.inspection,
         boundingBox: model.boundingBox,
@@ -205,6 +206,7 @@ export default function App() {
         stlBase64,
         stepBase64,
         glbBase64,
+        dimViews,
         parameters,
         inspection,
         boundingBox: inspection?.bounding_box,
@@ -223,6 +225,7 @@ export default function App() {
     stlBase64,
     stepBase64,
     glbBase64,
+    dimViews,
     parameters,
     inspection,
     uploadModelTo0G,
@@ -267,10 +270,7 @@ export default function App() {
         setParamValues(vals);
       }
       setSnapshots({});
-      const latestDimViews = [...(session.messages || [])]
-        .reverse()
-        .find((m: Message) => m.dimViews && Object.keys(m.dimViews).length > 0)?.dimViews || {};
-      setDimViews(latestDimViews);
+      setDimViews({});
       setStlUrl(null);
       setStlBase64(undefined);
       setStepBase64(undefined);
@@ -305,6 +305,19 @@ export default function App() {
             setParamValues(modelVals);
           }
           if (model.inspection) setInspection(model.inspection);
+          if (model.dimViews && Object.keys(model.dimViews).length > 0) {
+            setDimViews(model.dimViews);
+            setMessages(prev => {
+              const next = [...prev];
+              for (let j = next.length - 1; j >= 0; j--) {
+                if (next[j].role === 'assistant') {
+                  next[j] = { ...next[j], dimViews: model.dimViews };
+                  break;
+                }
+              }
+              return next;
+            });
+          }
 
           if (model.stlBase64) {
             const bytes = Uint8Array.from(atob(model.stlBase64), c => c.charCodeAt(0));
@@ -447,7 +460,6 @@ export default function App() {
               } else if (currentEvent === 'dim-views') {
                 liveDimViews = { ...liveDimViews, ...data.dimViews };
                 setDimViews(prev => ({ ...prev, ...data.dimViews }));
-                console.log('[DIM-VIEWS] received', Object.keys(data.dimViews || {}));
               } else if (currentEvent === 'vision-check') {
                 setInspection(prev => prev ? { ...prev, visionChecking: true } as any : prev);
               } else if (currentEvent === 'vision-result') {
@@ -493,7 +505,6 @@ export default function App() {
                   const updated = liveSteps.map(s => s.status === 'running' ? { ...s, status: 'done' as const, detail: s.detail || 'Complete' } : s);
                   updateSteps(updated);
                 }
-                console.log('[DONE] dimViews keys:', Object.keys(Object.keys(liveDimViews).length > 0 ? liveDimViews : (finalData.dimViews || {})));
               } else if (currentEvent === 'error') {
                 throw new Error(data.error);
               }
@@ -578,7 +589,6 @@ export default function App() {
               content: m.content,
               specifications: m.specifications,
               provider: m.provider,
-              dimViews: m.dimViews,
             }));
             const saveRes = await fetch(`${API_URL}${CHAT_ENDPOINTS.SAVE}`, {
               method: 'POST',
@@ -609,6 +619,7 @@ export default function App() {
                   stlBase64: finalData.stlBase64,
                   stepBase64: finalData.stepBase64,
                   glbBase64: finalData.glbBase64,
+                  dimViews: Object.keys(liveDimViews).length > 0 ? liveDimViews : (finalData.dimViews || {}),
                   parameters: finalData.parameters,
                   inspection: finalData.inspection,
                   boundingBox: finalData.inspection?.bounding_box,

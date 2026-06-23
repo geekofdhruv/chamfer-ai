@@ -26,7 +26,6 @@ export interface ChatMessageData {
   content: string;
   specifications?: { question: string; answer: string }[];
   provider?: string;
-  dimViews?: Record<string, string>;
 }
 
 function collapseMessagesForStorage(messages: ChatMessageData[]): ChatMessageData[] {
@@ -35,7 +34,7 @@ function collapseMessagesForStorage(messages: ChatMessageData[]): ChatMessageDat
   let specifications: ChatMessageData['specifications'];
 
   for (const message of messages) {
-    const hasResultData = !!message.provider || !!message.dimViews;
+    const hasResultData = !!message.provider;
 
     if (message.role === 'user') {
       if (message.specifications?.length) {
@@ -53,7 +52,6 @@ function collapseMessagesForStorage(messages: ChatMessageData[]): ChatMessageDat
         content: prompt?.content || message.content || 'Generated model',
         specifications,
         provider: message.provider,
-        dimViews: message.dimViews,
       });
       prompt = null;
       specifications = undefined;
@@ -76,10 +74,7 @@ async function insertMessages(sessionId: string, messages: ChatMessageData[]) {
     message_order: i,
     specifications: m.specifications ?? null,
     provider: m.provider || null,
-    dim_views: m.dimViews ?? null,
   }));
-  console.log(`[DB] insertMessages: ${rows.length} compact rows for session ${sessionId}`);
-  console.log('[DB] rows:', JSON.stringify(rows, null, 2));
   const { error } = await supabase.from('chat_messages').insert(rows);
   if (error) {
     console.error('[DB] insertMessages error:', error.message, '|', error.code, '|', error.details);
@@ -173,13 +168,12 @@ export async function getChatSession(sessionId: string, walletAddress: string) {
     return { session, messages: [] };
   }
 
-  // Convert DB columns → frontend shape (role, content, specifications, provider, dimViews)
+  // Convert DB columns → frontend shape (role, content, specifications, provider)
   const camelMessages = (messages || []).flatMap(m => {
     const provider = m.provider || undefined;
-    const dimViews = m.dim_views || undefined;
     const specifications = m.specifications || undefined;
 
-    if (provider || dimViews || specifications) {
+    if (provider || specifications) {
       const expanded: ChatMessageData[] = [
         {
           role: 'user',
@@ -199,7 +193,6 @@ export async function getChatSession(sessionId: string, walletAddress: string) {
         role: 'assistant',
         content: provider ? `Generated with ${provider}` : 'Generated model',
         provider,
-        dimViews,
       });
 
       return expanded;
@@ -224,6 +217,7 @@ export async function saveModelMetadata(
     rootHashStl?: string;
     rootHashStep?: string;
     rootHashGlb?: string;
+    rootHashDimViews?: string;
     parameters?: Parameter[];
     inspection?: Record<string, unknown>;
     boundingBox?: { size?: number[] };
@@ -242,6 +236,7 @@ export async function saveModelMetadata(
       root_hash_stl: model.rootHashStl || null,
       root_hash_step: model.rootHashStep || null,
       root_hash_glb: model.rootHashGlb || null,
+      root_hash_dim_views: model.rootHashDimViews || null,
       parameters: model.parameters || null,
       inspection: model.inspection || null,
       bounding_box: model.boundingBox || null,
@@ -338,6 +333,7 @@ export async function markModelUploadComplete(
     rootHashStl?: string;
     rootHashStep?: string;
     rootHashGlb?: string;
+    rootHashDimViews?: string;
     parameters?: Parameter[];
     inspection?: Record<string, unknown>;
     boundingBox?: { size?: number[] };
@@ -417,7 +413,7 @@ export async function getLatestModelForSession(sessionId: string, walletAddress:
 export async function getSavedModels(walletAddress: string) {
   const { data, error } = await supabase
     .from('saved_models')
-    .select('id, name, root_hash_code, root_hash_stl, root_hash_step, root_hash_glb, parameters, inspection, bounding_box, chat_session_id, message_order, upload_status, upload_error, created_at, updated_at')
+    .select('id, name, root_hash_code, root_hash_stl, root_hash_step, root_hash_glb, root_hash_dim_views, parameters, inspection, bounding_box, chat_session_id, message_order, upload_status, upload_error, created_at, updated_at')
     .eq('user_wallet', walletAddress)
     .order('created_at', { ascending: false })
     .limit(20);

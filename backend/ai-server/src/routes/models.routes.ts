@@ -25,6 +25,7 @@ router.post('/upload-to-0g', authMiddleware, async (req, res) => {
       stlBase64,
       stepBase64,
       glbBase64,
+      dimViews,
       parameters,
       inspection,
       boundingBox,
@@ -49,39 +50,49 @@ router.post('/upload-to-0g', authMiddleware, async (req, res) => {
       boundingBox,
     });
 
-    const rootHashes: { code?: string; stl?: string; step?: string; glb?: string } = {};
+    const rootHashes: { code?: string; stl?: string; step?: string; glb?: string; dimViews?: string } = {};
 
     try {
-      // Upload 1/4: Code
-      console.log(`[0G] Upload 1/4 (code) initiated...`);
+      // Upload 1/5: Code
+      console.log(`[0G] Upload 1/5 (code) initiated...`);
       rootHashes.code = await uploadTo0G(code, false);
-      console.log(`[0G] Upload 1/4 (code) successful: ${rootHashes.code}`);
+      console.log(`[0G] Upload 1/5 (code) successful: ${rootHashes.code}`);
 
-      // Upload 2/4: STL
+      // Upload 2/5: STL
       if (stlBase64) {
-        console.log(`[0G] Upload 2/4 (STL) initiated...`);
+        console.log(`[0G] Upload 2/5 (STL) initiated...`);
         rootHashes.stl = await uploadTo0G(stlBase64, true);
-        console.log(`[0G] Upload 2/4 (STL) successful: ${rootHashes.stl}`);
+        console.log(`[0G] Upload 2/5 (STL) successful: ${rootHashes.stl}`);
       } else {
-        console.log(`[0G] Upload 2/4 (STL) skipped — no data`);
+        console.log(`[0G] Upload 2/5 (STL) skipped — no data`);
       }
 
-      // Upload 3/4: STEP
+      // Upload 3/5: STEP
       if (stepBase64) {
-        console.log(`[0G] Upload 3/4 (STEP) initiated...`);
+        console.log(`[0G] Upload 3/5 (STEP) initiated...`);
         rootHashes.step = await uploadTo0G(stepBase64, true);
-        console.log(`[0G] Upload 3/4 (STEP) successful: ${rootHashes.step}`);
+        console.log(`[0G] Upload 3/5 (STEP) successful: ${rootHashes.step}`);
       } else {
-        console.log(`[0G] Upload 3/4 (STEP) skipped — no data`);
+        console.log(`[0G] Upload 3/5 (STEP) skipped — no data`);
       }
 
-      // Upload 4/4: GLB
+      // Upload 4/5: GLB
       if (glbBase64) {
-        console.log(`[0G] Upload 4/4 (GLB) initiated...`);
+        console.log(`[0G] Upload 4/5 (GLB) initiated...`);
         rootHashes.glb = await uploadTo0G(glbBase64, true);
-        console.log(`[0G] Upload 4/4 (GLB) successful: ${rootHashes.glb}`);
+        console.log(`[0G] Upload 4/5 (GLB) successful: ${rootHashes.glb}`);
       } else {
-        console.log(`[0G] Upload 4/4 (GLB) skipped — no data`);
+        console.log(`[0G] Upload 4/5 (GLB) skipped — no data`);
+      }
+
+      // Upload 5/5: Dim Views (JSON-serialized)
+      if (dimViews && Object.keys(dimViews).length > 0) {
+        console.log(`[0G] Upload 5/5 (dim views) initiated...`);
+        const dimViewsJson = JSON.stringify(dimViews);
+        rootHashes.dimViews = await uploadTo0G(dimViewsJson, false);
+        console.log(`[0G] Upload 5/5 (dim views) successful: ${rootHashes.dimViews}`);
+      } else {
+        console.log(`[0G] Upload 5/5 (dim views) skipped — no data`);
       }
 
       console.log(`[0G] All uploads complete. Saving metadata to Supabase...`);
@@ -91,6 +102,7 @@ router.post('/upload-to-0g', authMiddleware, async (req, res) => {
         rootHashStl: rootHashes.stl,
         rootHashStep: rootHashes.step,
         rootHashGlb: rootHashes.glb,
+        rootHashDimViews: rootHashes.dimViews,
         parameters,
         inspection,
         boundingBox,
@@ -145,12 +157,22 @@ router.get('/session/:sessionId/latest', authMiddleware, async (req, res) => {
       return;
     }
 
-    const [code, stlBase64, stepBase64, glbBase64] = await Promise.all([
+    const [code, stlBase64, stepBase64, glbBase64, dimViewsJson] = await Promise.all([
       model.root_hash_code ? fetchFrom0G(model.root_hash_code, false) : Promise.resolve(undefined),
       model.root_hash_stl ? fetchFrom0G(model.root_hash_stl, true) : Promise.resolve(undefined),
       model.root_hash_step ? fetchFrom0G(model.root_hash_step, true) : Promise.resolve(undefined),
       model.root_hash_glb ? fetchFrom0G(model.root_hash_glb, true) : Promise.resolve(undefined),
+      model.root_hash_dim_views ? fetchFrom0G(model.root_hash_dim_views, false) : Promise.resolve(undefined),
     ]);
+
+    let dimViews: Record<string, string> | undefined;
+    if (dimViewsJson) {
+      try {
+        dimViews = JSON.parse(dimViewsJson);
+      } catch {
+        console.error('[0G] Failed to parse dim views JSON from 0G');
+      }
+    }
 
     res.json({
       success: true,
@@ -162,6 +184,7 @@ router.get('/session/:sessionId/latest', authMiddleware, async (req, res) => {
         stlBase64,
         stepBase64,
         glbBase64,
+        dimViews,
         parameters: model.parameters || [],
         inspection: model.inspection || null,
         boundingBox: model.bounding_box || null,
@@ -170,6 +193,7 @@ router.get('/session/:sessionId/latest', authMiddleware, async (req, res) => {
           stl: model.root_hash_stl || undefined,
           step: model.root_hash_step || undefined,
           glb: model.root_hash_glb || undefined,
+          dimViews: model.root_hash_dim_views || undefined,
         },
         uploadStatus: model.upload_status,
         createdAt: model.created_at,

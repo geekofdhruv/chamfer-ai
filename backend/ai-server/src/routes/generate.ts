@@ -192,8 +192,6 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       }) as CadResult;
 
       console.log(`[ROUTE] CAD result: success=${cadResult.success}`);
-      console.log(`[ROUTE] dim_views keys: ${Object.keys(cadResult.dim_views || {}).join(',') || 'NONE'}`);
-      console.log(`[ROUTE] snapshots keys: ${Object.keys(cadResult.snapshots || {}).join(',') || 'NONE'}`);
 
       if (!cadResult.success) {
         const errorMsg = cadResult.error || 'Unknown execution error';

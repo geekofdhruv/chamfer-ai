@@ -6,6 +6,7 @@ export interface RootHashData {
   stl?: string;
   step?: string;
   glb?: string;
+  dimViews?: string;
 }
 
 interface RootHashesProps {
@@ -18,6 +19,7 @@ const LABELS: { key: keyof RootHashData; label: string }[] = [
   { key: 'stl', label: 'STL' },
   { key: 'step', label: 'STEP' },
   { key: 'glb', label: 'GLB' },
+  { key: 'dimViews', label: 'Dim Views' },
 ];
 
 function truncateHash(hash: string): string {
