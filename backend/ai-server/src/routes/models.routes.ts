@@ -41,6 +41,16 @@ router.post('/upload-to-0g', authMiddleware, async (req, res) => {
 
     console.log(`[0G] Upload request received — session ${chatSessionId} message ${msgOrder}`);
 
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const sendEvent = (data: Record<string, unknown>) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
     await markModelUploadPending(walletAddress, {
       name: modelName,
       chatSessionId,
@@ -51,47 +61,72 @@ router.post('/upload-to-0g', authMiddleware, async (req, res) => {
     });
 
     const rootHashes: { code?: string; stl?: string; step?: string; glb?: string; dimViews?: string } = {};
+    const txSeqs: { code?: number; stl?: number; step?: number; glb?: number; dimViews?: number } = {};
 
     try {
       // Upload 1/5: Code
+      sendEvent({ type: 'progress', file: 'code', label: 'Code', status: 'uploading', step: 1, total: 5 });
       console.log(`[0G] Upload 1/5 (code) initiated...`);
-      rootHashes.code = await uploadTo0G(code, false);
-      console.log(`[0G] Upload 1/5 (code) successful: ${rootHashes.code}`);
+      const codeResult = await uploadTo0G(code, false);
+      rootHashes.code = codeResult.rootHash;
+      txSeqs.code = codeResult.txSeq;
+      sendEvent({ type: 'progress', file: 'code', label: 'Code', status: 'done', rootHash: codeResult.rootHash, txSeq: codeResult.txSeq, step: 1, total: 5 });
+      console.log(`[0G] Upload 1/5 (code) successful: ${rootHashes.code} (seq=${codeResult.txSeq})`);
 
       // Upload 2/5: STL
       if (stlBase64) {
+        sendEvent({ type: 'progress', file: 'stl', label: 'STL', status: 'uploading', step: 2, total: 5 });
         console.log(`[0G] Upload 2/5 (STL) initiated...`);
-        rootHashes.stl = await uploadTo0G(stlBase64, true);
-        console.log(`[0G] Upload 2/5 (STL) successful: ${rootHashes.stl}`);
+        const stlResult = await uploadTo0G(stlBase64, true);
+        rootHashes.stl = stlResult.rootHash;
+        txSeqs.stl = stlResult.txSeq;
+        sendEvent({ type: 'progress', file: 'stl', label: 'STL', status: 'done', rootHash: stlResult.rootHash, txSeq: stlResult.txSeq, step: 2, total: 5 });
+        console.log(`[0G] Upload 2/5 (STL) successful: ${rootHashes.stl} (seq=${stlResult.txSeq})`);
       } else {
+        sendEvent({ type: 'progress', file: 'stl', label: 'STL', status: 'skipped', step: 2, total: 5 });
         console.log(`[0G] Upload 2/5 (STL) skipped — no data`);
       }
 
       // Upload 3/5: STEP
       if (stepBase64) {
+        sendEvent({ type: 'progress', file: 'step', label: 'STEP', status: 'uploading', step: 3, total: 5 });
         console.log(`[0G] Upload 3/5 (STEP) initiated...`);
-        rootHashes.step = await uploadTo0G(stepBase64, true);
-        console.log(`[0G] Upload 3/5 (STEP) successful: ${rootHashes.step}`);
+        const stepResult = await uploadTo0G(stepBase64, true);
+        rootHashes.step = stepResult.rootHash;
+        txSeqs.step = stepResult.txSeq;
+        sendEvent({ type: 'progress', file: 'step', label: 'STEP', status: 'done', rootHash: stepResult.rootHash, txSeq: stepResult.txSeq, step: 3, total: 5 });
+        console.log(`[0G] Upload 3/5 (STEP) successful: ${rootHashes.step} (seq=${stepResult.txSeq})`);
       } else {
+        sendEvent({ type: 'progress', file: 'step', label: 'STEP', status: 'skipped', step: 3, total: 5 });
         console.log(`[0G] Upload 3/5 (STEP) skipped — no data`);
       }
 
       // Upload 4/5: GLB
       if (glbBase64) {
+        sendEvent({ type: 'progress', file: 'glb', label: 'GLB', status: 'uploading', step: 4, total: 5 });
         console.log(`[0G] Upload 4/5 (GLB) initiated...`);
-        rootHashes.glb = await uploadTo0G(glbBase64, true);
-        console.log(`[0G] Upload 4/5 (GLB) successful: ${rootHashes.glb}`);
+        const glbResult = await uploadTo0G(glbBase64, true);
+        rootHashes.glb = glbResult.rootHash;
+        txSeqs.glb = glbResult.txSeq;
+        sendEvent({ type: 'progress', file: 'glb', label: 'GLB', status: 'done', rootHash: glbResult.rootHash, txSeq: glbResult.txSeq, step: 4, total: 5 });
+        console.log(`[0G] Upload 4/5 (GLB) successful: ${rootHashes.glb} (seq=${glbResult.txSeq})`);
       } else {
+        sendEvent({ type: 'progress', file: 'glb', label: 'GLB', status: 'skipped', step: 4, total: 5 });
         console.log(`[0G] Upload 4/5 (GLB) skipped — no data`);
       }
 
       // Upload 5/5: Dim Views (JSON-serialized)
       if (dimViews && Object.keys(dimViews).length > 0) {
+        sendEvent({ type: 'progress', file: 'dimViews', label: 'Dim Views', status: 'uploading', step: 5, total: 5 });
         console.log(`[0G] Upload 5/5 (dim views) initiated...`);
         const dimViewsJson = JSON.stringify(dimViews);
-        rootHashes.dimViews = await uploadTo0G(dimViewsJson, false);
-        console.log(`[0G] Upload 5/5 (dim views) successful: ${rootHashes.dimViews}`);
+        const dimResult = await uploadTo0G(dimViewsJson, false);
+        rootHashes.dimViews = dimResult.rootHash;
+        txSeqs.dimViews = dimResult.txSeq;
+        sendEvent({ type: 'progress', file: 'dimViews', label: 'Dim Views', status: 'done', rootHash: dimResult.rootHash, txSeq: dimResult.txSeq, step: 5, total: 5 });
+        console.log(`[0G] Upload 5/5 (dim views) successful: ${rootHashes.dimViews} (seq=${dimResult.txSeq})`);
       } else {
+        sendEvent({ type: 'progress', file: 'dimViews', label: 'Dim Views', status: 'skipped', step: 5, total: 5 });
         console.log(`[0G] Upload 5/5 (dim views) skipped — no data`);
       }
 
@@ -116,14 +151,17 @@ router.post('/upload-to-0g', authMiddleware, async (req, res) => {
         console.error(`[0G] Failed to save metadata to Supabase for session ${chatSessionId} message ${msgOrder}`);
       }
 
-      res.json({
+      sendEvent({
+        type: 'done',
         success: true,
         message: 'Upload to 0G complete',
         chatSessionId,
         messageOrder: msgOrder,
         uploadStatus: 'complete',
         rootHashes,
+        txSeqs,
       });
+      res.end();
     } catch (uploadErr) {
       console.error(`[0G] Upload failed:`, uploadErr instanceof Error ? uploadErr.message : String(uploadErr));
       await markModelUploadFailed(walletAddress, {
@@ -135,15 +173,19 @@ router.post('/upload-to-0g', authMiddleware, async (req, res) => {
         boundingBox,
         error: uploadErr instanceof Error ? uploadErr.message : String(uploadErr),
       });
-      res.status(500).json({
+      sendEvent({
+        type: 'error',
         success: false,
         error: uploadErr instanceof Error ? uploadErr.message : String(uploadErr),
         rootHashes,
+        txSeqs,
       });
+      res.end();
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    res.status(500).json({ error: msg });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: msg })}\n\n`);
+    res.end();
   }
 });
 
@@ -205,7 +247,7 @@ router.get('/session/:sessionId/latest', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('/fetch-from-0g/:rootHash', authMiddleware, async (req, res) => {
+router.get('/fetch-from-0g/:rootHash', async (req, res) => {
   try {
     const isBase64 = req.query.isBase64 === 'true';
     const dataStr = await fetchFrom0G(req.params.rootHash, isBase64);

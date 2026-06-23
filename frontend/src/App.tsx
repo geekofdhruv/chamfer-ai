@@ -15,7 +15,7 @@ import { ClarificationMessage } from '@/components/chat/ClarificationMessage';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { DimViews } from '@/components/chat/DimViews';
 import { RootHashes } from '@/components/chat/RootHashes';
-import type { RootHashData } from '@/types';
+import type { RootHashData, TxSeqData } from '@/components/chat/RootHashes';
 import { ParameterPanel } from '@/components/cad/ParameterPanel';
 import { ExportSection } from '@/components/cad/ExportSection';
 import { CodeSection } from '@/components/cad/CodeSection';
@@ -61,6 +61,8 @@ export default function App() {
   const [modelStorageStatus, setModelStorageStatus] = useState<string | null>(null);
   const [rootHashes, setRootHashes] = useState<RootHashData | null>(null);
   const [rootHashesLoading, setRootHashesLoading] = useState(false);
+  const [txSeqs, setTxSeqs] = useState<TxSeqData | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, { status: string; rootHash?: string; txSeq?: number }> | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [streamReasoning, setStreamReasoning] = useState('');
@@ -164,6 +166,8 @@ export default function App() {
     console.log(`[0G] Frontend: upload initiated for session ${model.sessionId} message ${model.messageOrder}`);
     setRootHashesLoading(true);
     setRootHashes(null);
+    setTxSeqs(null);
+    setUploadProgress({});
 
     const res = await fetch(`${API_URL}${MODEL_ENDPOINTS.UPLOAD_0G}`, {
       method: 'POST',
@@ -187,16 +191,56 @@ export default function App() {
       const data = await res.json().catch(() => ({}));
       console.error(`[0G] Frontend: upload failed — ${data.error || res.status}`);
       setRootHashesLoading(false);
+      setUploadProgress(null);
       throw new Error(data.error || `0G upload request failed: ${res.status}`);
     }
 
-    const data = await res.json();
-    if (data.rootHashes) {
-      console.log(`[0G] Frontend: upload successful, hashes:`, data.rootHashes);
-      setRootHashes(data.rootHashes);
+    // Read SSE stream
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalData: any = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'progress') {
+              setUploadProgress(prev => ({
+                ...prev,
+                [data.file]: { status: data.status, rootHash: data.rootHash, txSeq: data.txSeq },
+              }));
+            } else if (data.type === 'done') {
+              finalData = data;
+              if (data.rootHashes) {
+                setRootHashes(data.rootHashes);
+                if (data.txSeqs) setTxSeqs(data.txSeqs);
+              }
+            } else if (data.type === 'error') {
+              setRootHashesLoading(false);
+              setUploadProgress(null);
+              throw new Error(data.error);
+            }
+          } catch (e: any) {
+            if (e.message && !e.message.includes('JSON')) throw e;
+          }
+        }
+      }
     }
+
     setRootHashesLoading(false);
-    return data;
+    setUploadProgress(null);
+    console.log(`[0G] Frontend: upload successful`);
+    return finalData;
   }, [authHeaders]);
 
   const storeCurrentIteration = useCallback(async () => {
@@ -282,6 +326,7 @@ export default function App() {
       setStepBase64(undefined);
       setGlbBase64(undefined);
       setRootHashes(null);
+      setTxSeqs(null);
       setRootHashesLoading(false);
 
       try {
@@ -303,6 +348,7 @@ export default function App() {
             setRootHashesLoading(false);
           } else {
             setRootHashes(null);
+      setTxSeqs(null);
           }
           if (model.parameters?.length) {
             setParameters(model.parameters);
@@ -698,6 +744,7 @@ export default function App() {
     setHasUnsavedParamIteration(false);
     setModelStorageStatus(null);
     setRootHashes(null);
+      setTxSeqs(null);
     setRootHashesLoading(false);
     resetParams();
   }, [messages, chatSessionId, auth.isConnected, stlObjectUrl, saveCurrentSession, resetParams]);
@@ -796,7 +843,7 @@ export default function App() {
                             <Fragment key={i}>
                               <MessageBubble message={msg} />
                               {msg.role === 'assistant' && i === messages.length - 1 && (
-                                <RootHashes hashes={rootHashes} loading={rootHashesLoading} />
+                                <RootHashes hashes={rootHashes} txSeqs={txSeqs} loading={rootHashesLoading} progress={uploadProgress} />
                               )}
                             </Fragment>
                           )

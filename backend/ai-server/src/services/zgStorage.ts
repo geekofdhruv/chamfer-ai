@@ -32,7 +32,7 @@ function getMasterKey(): Uint8Array {
   return Uint8Array.from(hash);
 }
 
-export async function uploadTo0G(dataStr: string, isBase64: boolean = false): Promise<string> {
+export async function uploadTo0G(dataStr: string, isBase64: boolean = false): Promise<{ rootHash: string; txSeq: number }> {
   init0G();
   if (!indexer || !signer) throw new Error('0G Storage not initialized (missing OG_PRIVATE_KEY)');
 
@@ -54,11 +54,10 @@ export async function uploadTo0G(dataStr: string, isBase64: boolean = false): Pr
     throw new Error(`Upload error: ${uploadErr}`);
   }
   
-  // Return the rootHash
-  if ('rootHash' in tx) {
-    return tx.rootHash as string;
+  if ('rootHash' in tx && 'txSeq' in tx) {
+    return { rootHash: tx.rootHash as string, txSeq: tx.txSeq as number };
   } else if ('rootHashes' in tx && tx.rootHashes.length > 0) {
-    return tx.rootHashes[0] as string;
+    return { rootHash: tx.rootHashes[0] as string, txSeq: (tx.txSeqs?.[0] ?? 0) as number };
   }
   throw new Error('Upload succeeded but no root hash returned');
 }
