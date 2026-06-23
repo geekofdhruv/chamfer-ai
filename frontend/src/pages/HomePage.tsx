@@ -448,7 +448,7 @@ export function HomePage() {
                     />
                     <div className="flex flex-wrap justify-center gap-2">
                       <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
-                        Powered by <span className="font-medium text-adam-blue">0G Compute</span>
+                        Powered by <span className="font-bold text-pink-400">0G Compute</span>
                       </span>
                       <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
                         CadQuery <span className="font-medium text-adam-blue">Python</span>

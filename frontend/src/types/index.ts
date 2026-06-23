@@ -8,6 +8,14 @@ export interface ParameterSchema {
   options?: string[];
 }
 
+export interface RootHashData {
+  code?: string;
+  stl?: string;
+  step?: string;
+  glb?: string;
+  dimViews?: string;
+}
+
 export interface Parameter {
   name: string;
   default: number;
@@ -63,6 +71,7 @@ export interface Message {
   visionVerified?: boolean;
   visionFeedback?: string;
   timestamp?: number;
+  rootHashes?: RootHashData;
 }
 
 export interface Provider {

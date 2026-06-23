@@ -1,11 +1,48 @@
-# VibeCAD
+<p align="center">
+  <img src="frontend/public/chamfer-ai-logo.png" alt="ChamferAI Logo" width="100%"/>
+</p>
 
-AI-powered parametric CAD generation platform. Users describe a part in natural language, and LLM agents generate, execute, inspect, and iteratively repair CadQuery Python code to produce manufacturable STL/STEP/GLB files — all sandboxed in Docker, with chat history persisted in Supabase and encrypted CAD assets stored on 0G decentralized storage.
+<p align="center">
+  AI-powered parametric CAD generation platform built on <a href="https://0g.ai">0G</a> — the blockchain for AI agents. Users describe a part in natural language, and LLM agents generate, execute, inspect, and iteratively repair CadQuery Python code to produce manufacturable STL/STEP/GLB files. AI inference runs on <a href="https://docs.0g.ai/concepts/compute">0G Compute</a> (decentralized, no centralized logging, 90% cheaper than AWS), and encrypted CAD assets are stored on <a href="https://docs.0g.ai/concepts/storage">0G Storage</a> (95% lower cost than S3, instant retrieval, immutable audit trail).
+</p>
+
+---
+
+## Why 0G?
+
+Engineering companies generate sensitive, high-value CAD assets — proprietary part designs, toolpaths, and manufacturing-ready models. Storing these on centralized infrastructure creates real business risks:
+
+**The problem with centralized AI (OpenAI, Anthropic, Google):**
+- Your prompts and generated code pass through their servers — they can log, train on, or leak your designs
+- Vendor lock-in: pricing changes, API deprecations, or policy shifts can break your pipeline overnight
+- No audit trail — you can't prove what happened to your data after sending it
+- Fixed monthly costs regardless of usage — expensive for startups and teams
+
+**The problem with centralized storage (AWS S3, Google Cloud, Azure):**
+- Single points of failure — an outage locks you out of your own files
+- The provider can read, censor, or delete your assets at any time
+- Compliance headaches: storing IP in jurisdictions you don't control
+- Vendor lock-in with opaque pricing that increases over time
+
+**0G is purpose-built to solve both.**
+
+[0G](https://0g.ai) (ZeroGravity) is the blockchain for AI agents — a modular L1 that combines decentralized compute, storage, and data availability into one stack. Mainnet live since September 2025, 28M+ blocks produced, 346K+ accounts, 300+ ecosystem partners including Chainlink, Google Cloud, and Alibaba Cloud.
+
+| Problem | 0G Solution | vs. Centralized |
+|---------|-------------|-----------------|
+| AI inference logging | **0G Compute** — decentralized GPU marketplace | No data retention by providers. Verifiable computation proofs (TEEML, OPML, ZKML). 90% cheaper than AWS/Google. |
+| File storage trust | **0G Storage** — content-addressed, erasure-coded | 95% lower costs than AWS. Instant retrieval. Survives 30% node failure. |
+| Auditability | Every upload is an on-chain transaction | Immutable proof of what was stored and when |
+| Availability | Distributed across thousands of nodes | No single point of failure. 11K+ TPS per shard. |
+| Vendor lock-in | Open protocol, pay-per-use | Works with any blockchain or Web2 app. No subscriptions. |
+
+> **Without 0G, this is just another AI wrapper that sends your IP to OpenAI. With 0G, it's a sovereign CAD platform where companies own their data end-to-end.**
 
 ---
 
 ## Table of Contents
 
+- [Why 0G?](#why-0g)
 - [Architecture Overview](#architecture-overview)
 - [Project Structure](#project-structure)
 - [Frontend](#frontend)
@@ -23,52 +60,41 @@ AI-powered parametric CAD generation platform. Users describe a part in natural 
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Frontend (React/Vite)                         │
-│                                                                         │
-│  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌───────────────────┐  │
-│  │ Chat     │  │ 3D Preview   │  │ Inspect  │  │ Session Sidebar   │  │
-│  │ Panel    │  │ (Three.js)   │  │ Panel    │  │ + History         │  │
-│  └────┬─────┘  └──────┬───────┘  └────┬─────┘  └────────┬──────────┘  │
-│       │               │               │                  │              │
-│       └───────────────┴───────────────┴──────────────────┘              │
-│                              │  HTTP / SSE                              │
-└──────────────────────────────┼──────────────────────────────────────────┘
-                               │
-┌──────────────────────────────┼──────────────────────────────────────────┐
-│              AI Server (Express/TypeScript, port 4000)                  │
-│                              │                                          │
-│  ┌────────────┐  ┌──────────┴────────┐  ┌──────────┐  ┌────────────┐  │
-│  │ LLM Agents │  │ Generate Route    │  │ Auth MW  │  │ Chat/Model │  │
-│  │ (OpenAI    │  │ (SSE streaming)   │  │ (Wallet) │  │ Routes     │  │
-│  │  compat)   │  │                   │  │          │  │            │  │
-│  └────────────┘  └──────────┬────────┘  └──────────┘  └─────┬──────┘  │
-│                             │                              │          │
-│                   ┌─────────┴────────┐           ┌─────────┴────────┐ │
-│                   │ CAD Server Call  │           │ Supabase (DB)    │ │
-│                   └─────────┬────────┘           │ + 0G Storage     │ │
-└─────────────────────────────┼────────────────────┴──────────────────┘
-                               │
-┌──────────────────────────────┼──────────────────────────────────────────┐
-│           CAD Server (FastAPI/Python, port 5000)                        │
-│                              │                                          │
-│                   ┌──────────┴────────┐                                 │
-│                   │ Docker SDK        │                                 │
-│                   │ (Sandbox Container)│                                │
-│                   └──────────┬────────┘                                 │
-│                              │                                          │
-│                   ┌──────────┴────────┐                                 │
-│                   │ runner.py         │                                 │
-│                   │ (Restricted exec) │                                 │
-│                   │ → STL/STEP/GLB    │                                 │
-│                   │ → Validation      │                                 │
-│                   │ → Inspection      │                                 │
-│                   │ → SVG Snapshots   │                                 │
-│                   │ → PNG Renders     │                                 │
-│                   │ → Dim Views       │                                 │
-│                   └───────────────────┘                                 │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    subgraph Frontend
+        UI["React / Vite + Three.js"]
+    end
+
+    subgraph AI["AI Server :4000"]
+        Gen["SSE Generation"]
+        Params["Param Updates"]
+        LLM["LLM Providers"]
+    end
+
+    subgraph CAD["CAD Server :5000"]
+        API["FastAPI"]
+        Sandbox["Docker Sandbox"]
+        Runner["runner.py"]
+    end
+
+    subgraph Storage
+        SB[("Supabase")]
+        ZG["0G Storage"]
+    end
+
+    User --> UI
+    UI -->|"POST /generate"| Gen
+    UI -->|"POST /update-params"| Params
+    Gen --> LLM
+    Gen --> API
+    Params --> API
+    API --> Sandbox
+    Sandbox --> Runner
+    Runner -->|"STL / STEP / GLB"| Gen
+    Gen -->|"SSE stream"| UI
+    UI -->|"Sessions"| SB
+    UI -->|"Encrypted files"| ZG
 ```
 
 ---
@@ -76,7 +102,7 @@ AI-powered parametric CAD generation platform. Users describe a part in natural 
 ## Project Structure
 
 ```
-vibecad/
+chamferai/
 ├── frontend/                 # React + Vite + Three.js frontend
 │   ├── src/
 │   │   ├── App.tsx           # Main app — chat, generation, session management
@@ -176,11 +202,11 @@ vibecad/
 
 ### LLM Providers
 
-The server supports 10 providers via an OpenAI-compatible interface:
+The server supports 10 providers via an OpenAI-compatible interface. For privacy-sensitive CAD work, **0G Compute** is the recommended provider:
 
 | Provider ID | Model | Vision | Notes |
 |-------------|-------|--------|-------|
-| `0g` | Qwen 2.5 Omni 7B | Yes | 0G decentralized inference |
+| `0g` | Qwen 2.5 Omni 7B | Yes | **0G Compute** — decentralized GPU marketplace. No data retention. Verifiable proofs. 90% cheaper than centralized providers. |
 | `mimo` | MiMo 2.5 | Yes | Xiaomi MiMo, 310B (15B active) |
 | `mimo-pro` | MiMo 2.5 Pro | No | 1T (42B active) |
 | `deepseek-v4-flash` | DeepSeek V4 Flash | No | Fast, 1M context |
@@ -190,6 +216,8 @@ The server supports 10 providers via an OpenAI-compatible interface:
 | `minimax-m3` | MiniMax M3 | Yes | 512K context |
 | `glm-5p1` | GLM 5.1 | No | 202K context |
 | `glm-5p2` | GLM 5.2 | No | Opus-level, 1M context |
+
+> **Why 0G Compute matters for CAD:** When an engineer describes a proprietary part design, that prompt contains trade secrets — dimensions, materials, tolerances. Centralized AI providers can log, analyze, and potentially leak those prompts. 0G Compute runs inference on a decentralized GPU marketplace with cryptographic verification — your design descriptions never touch a centralized server, and you pay only for actual compute used.
 
 ### API Endpoints
 
@@ -254,57 +282,20 @@ All outputs are written as JSON/base64 files to `/work/` and collected by `execu
 
 The generation pipeline is a multi-agent, multi-retry system orchestrated via Server-Sent Events (SSE). The frontend receives real-time workflow step updates that render as a live timeline in the chat.
 
-```
-User Prompt
-    │
-    ▼
-┌──────────────────┐
-│ STEP 0: CLARIFY  │  Clarifier agent checks if the prompt has enough detail.
-│ (always runs)    │  If ambiguous → sends questions to user, STOPS.
-│                  │  If clear → standardizes prompt, continues.
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ STEP 1: ANALYZE  │  LLM analyzes the prompt to identify geometry type,
-│                  │  dimensions, and parameters.
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ STEP 2: GENERATE │  LLM writes CadQuery Python code with named parameters
-│                  │  and export calls. Streaming (with optional reasoning).
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ STEP 3: EXECUTE  │  Code sent to CAD server → Docker sandbox.
-│                  │  CadQuery runs → STL/STEP/GLB + validation + inspection
-│                  │  + snapshots + dim views.
-└────────┬─────────┘
-         │
-    Success? ─── No ──→ Error classified → feedback sent to LLM → RETRY (up to 4x)
-         │
-         │ Yes
-         ▼
-┌──────────────────┐
-│ STEP 4: INSPECT  │  Geometry validation: volume, faces, bounding box,
-│                  │  B-rep validity. Errors → feedback to LLM → RETRY.
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ STEP 5: VISION   │  (Vision-capable providers only)
-│                  │  LLM reviews PNG renders of the model.
-│                  │  If issues found → feedback to LLM → RETRY.
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ STEP 6: DELIVER  │  Final package: code + STL + STEP + GLB +
-│                  │  snapshots + dim views + inspection data.
-│                  │  All sent to frontend via SSE 'done' event.
-└──────────────────┘
+```mermaid
+graph TD
+    A["User Prompt"] --> B["STEP 0: CLARIFY"]
+    B -->|"Ambiguous"| BQ["Send questions to user → STOP"]
+    B -->|"Clear"| C["STEP 1: ANALYZE"]
+    C --> D["STEP 2: GENERATE"]
+    D --> E["STEP 3: EXECUTE"]
+    E -->|"Failure"| ERR["Error classified → feedback to LLM → RETRY (up to 4x)"]
+    ERR --> E
+    E -->|"Success"| F["STEP 4: INSPECT"]
+    F -->|"Geometry errors"| ERR
+    F -->|"Pass"| G["STEP 5: VISION"]
+    G -->|"Issues found"| ERR
+    G -->|"Pass"| H["STEP 6: DELIVER"]
 ```
 
 ### Retry Logic
@@ -383,7 +374,23 @@ Chat sessions are persisted in Supabase using a two-table approach. Only **user-
 
 ## 0G Decentralized Storage
 
-CAD assets are encrypted and stored on **0G Storage** (testnet), a decentralized file storage network. Only root hashes are stored in Supabase — the actual file content lives on 0G.
+ChamferAI uses [0G Storage](https://docs.0g.ai/concepts/storage) as the primary file storage layer for all CAD assets. This is not an optional add-on — it's core to the value proposition.
+
+### Why Not Just Use S3?
+
+| Concern | Centralized (S3/GCS) | 0G Storage |
+|---------|---------------------|------------|
+| **Cost** | Expensive, pricing increases over time | **95% lower costs** than AWS |
+| **Data ownership** | Provider can access your files | Encrypted, only you hold root hashes |
+| **Single point of failure** | AWS outage = your data is gone | Distributed across thousands of nodes. Survives 30% node failure via erasure coding. |
+| **Audit trail** | Opaque access logs | Every upload is an on-chain transaction |
+| **Vendor lock-in** | Hard to migrate, proprietary APIs | Content-addressed, portable. Works with any blockchain or Web2 app. |
+| **Compliance** | Data in jurisdictions you don't control | You choose where your nodes run |
+| **Retrieval speed** | Fast (CDN-backed) | **Instant** — 200 MBPS even at network congestion |
+
+0G Storage uses a two-lane architecture: a **Data Publishing Lane** for metadata and availability proofs, and a **Data Storage Lane** with erasure coding that splits data into chunks with redundancy. Even if 30% of nodes fail, your data remains accessible.
+
+Storage providers earn through **Proof of Random Access (PoRA)** — a consensus mechanism where miners must cryptographically prove they actually store the data they claim to store, with random challenges and quick response requirements. Mining is capped at 8 TB per operation to keep it fair and prevent centralization.
 
 ### What Gets Stored
 
@@ -395,20 +402,25 @@ CAD assets are encrypted and stored on **0G Storage** (testnet), a decentralized
 | GLB | Base64 binary | `uploadTo0G(glbBase64, true)` |
 | Dim views | JSON-serialized `{ top: "base64...", front: "...", side: "..." }` | `uploadTo0G(jsonStr, false)` |
 
-### Encryption
+### Encryption — Why It Matters
+
+Engineering CAD files are **trade secrets**. A gear design, a bracket, a housing — these represent thousands of hours of R&D. If leaked, competitors can manufacture your parts without investing in design.
 
 All uploads are encrypted with **AES-256** using a single server-wide master key (`FILE_MASTER_KEY` env var). The key is SHA-256 hashed to produce a 32-byte AES key. The same key is used for decryption on download.
+
+Even if someone gains access to the 0G network, they see only encrypted blobs — not your designs. Only your application, with the master key, can decrypt and render the files.
 
 ### Upload Sequence
 
 Uploads happen **sequentially** (not in parallel) to avoid nonce collisions on the 0G chain — each upload is an on-chain transaction from the same wallet, so parallel submissions would conflict.
 
-```
-1/5: Code       → root_hash_code
-2/5: STL        → root_hash_stl
-3/5: STEP       → root_hash_step
-4/5: GLB        → root_hash_glb
-5/5: Dim Views  → root_hash_dim_views
+```mermaid
+graph LR
+    A["1/5: Code"] -->|root_hash_code| B["2/5: STL"]
+    B -->|root_hash_stl| C["3/5: STEP"]
+    C -->|root_hash_step| D["4/5: GLB"]
+    D -->|root_hash_glb| E["5/5: Dim Views"]
+    E -->|root_hash_dim_views| Done["Complete"]
 ```
 
 Each step logs `[0G] Upload N/5 (type) initiated...` and `[0G] Upload N/5 (type) successful: 0x...` to the backend console.
@@ -472,27 +484,23 @@ Root hashes are shown in the chat below the dimensional views, with:
 
 ### Auth Flow
 
-```
-User clicks "Login"
-    │
-    ▼
-Web3Auth modal opens
-    │
-    ▼
-Wallet connected → address obtained
-    │
-    ▼
-Frontend: useAuth hook updates isConnected + address
-    │
-    ▼
-POST /api/auth/verify (Bearer: <address>)
-    │
-    ▼
-Backend: upsertProfile() → profiles table
-    │
-    ▼
-Frontend: session list auto-loads
-Frontend: generation unblocked
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant W as Web3Auth
+    participant B as Backend
+    participant DB as Supabase
+
+    U->>F: Click "Login"
+    F->>W: Open modal
+    W-->>F: Wallet connected → address
+    F->>F: useAuth hook updates isConnected + address
+    F->>B: POST /api/auth/verify (Bearer: address)
+    B->>DB: upsertProfile() → profiles table
+    DB-->>B: OK
+    B-->>F: OK
+    F->>F: Session list auto-loads, generation unblocked
 ```
 
 ---
@@ -623,7 +631,7 @@ Run `docs/supabase_schema.sql` in the Supabase SQL Editor, followed by any migra
 cd backend/cad-server
 
 # Build the sandboxed executor image
-docker build -t vibecad-cad-executor .
+docker build -t chamferai-cad-executor .
 
 # Start the CAD API server
 pip install -r requirements.txt
@@ -663,3 +671,43 @@ npm run dev
 ### Docker Desktop Requirement
 
 Docker Desktop must be running locally because the CAD server uses the Docker SDK to spawn sandbox containers. Without Docker, CAD execution will return an error.
+
+---
+
+## The Full 0G Stack
+
+ChamferAI is built on two 0G primitives that together create a sovereign CAD platform:
+
+```mermaid
+graph LR
+    subgraph User["Engineer"]
+        Prompt["Describe a part"]
+    end
+
+    subgraph Compute["0G Compute"]
+        Inference["Decentralized GPU marketplace"]
+    end
+
+    subgraph Storage["0G Storage"]
+        Files["Encrypted CAD files"]
+    end
+
+    subgraph Result["Output"]
+        Model["STL / STEP / GLB"]
+    end
+
+    Prompt -->|"Design description"| Inference
+    Inference -->|"CadQuery code"| Result
+    Result -->|"Encrypted artifacts"| Files
+    Files -->|"Root hashes"| Result
+```
+
+| Layer | What it does | Why it matters |
+|-------|-------------|----------------|
+| **0G Compute** | Decentralized GPU marketplace for AI inference | Design prompts never touch a centralized server. No data retention. Verifiable computation proofs (TEEML, OPML, ZKML). 90% cheaper than AWS/Google. Pay-per-use, no subscriptions. |
+| **0G Storage** | Content-addressed, erasure-coded file storage | 95% lower costs than AWS. Instant retrieval (200 MBPS). Survives 30% node failure. Every upload is an on-chain transaction — immutable audit trail. |
+
+**The bottom line:** Companies generating proprietary CAD models should not have to trust OpenAI with their prompts or AWS with their files. 0G eliminates both trust assumptions in one stack — and does it at a fraction of the cost.
+
+> *"0G is critical infrastructure that is redefining what's possible for AI and blockchain. Their architecture is a foundational leap toward truly decentralized, performant AI infrastructure."*
+> — Ed Roman, Managing Director, Hack VC

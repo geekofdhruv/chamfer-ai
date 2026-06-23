@@ -136,7 +136,7 @@ function ProgressRow({ label, status }: { label: string; status: string }) {
       <StatusIcon status={status} />
       <span className="text-[10px] text-adam-text-tertiary uppercase tracking-wider w-12 shrink-0">{label}</span>
       <span className={`text-[10px] flex-1 ${status === 'uploading' ? 'text-adam-blue' : status === 'done' ? 'text-adam-text-tertiary' : 'text-adam-text-tertiary/40'}`}>
-        {status === 'uploading' && 'Uploading to 0G...'}
+        {status === 'uploading' && <span>Uploading to <span className="text-pink-400 font-bold">0G</span>...</span>}
         {status === 'done' && 'Stored'}
         {status === 'skipped' && 'No data'}
         {status === 'pending' && 'Waiting...'}
@@ -157,7 +157,7 @@ export function RootHashes({ hashes, txSeqs, loading, progress }: RootHashesProp
           <div className="flex items-center gap-2">
             <Loader2 className="h-3 w-3 text-adam-blue animate-spin" />
             <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-[0.1em]">
-              Uploading to 0G Storage
+              Uploading to <span className="text-pink-400 font-bold">0G</span> Storage
             </span>
             <span className="text-[9px] text-adam-text-tertiary ml-auto tabular-nums">{doneCount}/5</span>
           </div>
@@ -204,7 +204,7 @@ export function RootHashes({ hashes, txSeqs, loading, progress }: RootHashesProp
       <div className="px-3 py-2 border-b border-adam-neutral-700/30 bg-[#1e1e1e]/50">
         <div className="flex items-center gap-2">
           <Hash className="h-3 w-3 text-adam-blue" />
-          <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-[0.1em]">
+          <span className="text-[11px] font-bold text-pink-400 font-sans tracking-wide uppercase">
             0G Storage Root Hashes
           </span>
           <span className="text-[9px] text-adam-text-tertiary ml-auto">{entries.length} files</span>

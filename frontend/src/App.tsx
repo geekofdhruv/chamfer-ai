@@ -68,7 +68,9 @@ export default function App() {
   const [rootHashesLoading, setRootHashesLoading] = useState(false);
   const [txSeqs, setTxSeqs] = useState<TxSeqData | null>(null);
   const [uploadProgress, setUploadProgress] = useState<Record<string, { status: string; rootHash?: string; txSeq?: number }> | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sidebarManuallyToggled = useRef(false);
+
   const [isFocused, setIsFocused] = useState(false);
   const [streamReasoning, setStreamReasoning] = useState('');
   const [reasoningEnabled, setReasoningEnabled] = useState(true);
@@ -348,6 +350,17 @@ export default function App() {
           if (model.rootHashes) {
             setRootHashes(model.rootHashes);
             setRootHashesLoading(false);
+            // Store root hashes in the last assistant message
+            setMessages(prev => {
+              const next = [...prev];
+              for (let i = next.length - 1; i >= 0; i--) {
+                if (next[i].role === 'assistant') {
+                  next[i] = { ...next[i], rootHashes: model.rootHashes };
+                  break;
+                }
+              }
+              return next;
+            });
           } else {
             setRootHashes(null);
             setTxSeqs(null);
@@ -714,7 +727,21 @@ export default function App() {
                   inspection: finalData.inspection,
                   boundingBox: finalData.inspection?.bounding_box,
                 })
-                  .then(() => setModelStorageStatus('0G storage complete'))
+                  .then((uploadResult) => {
+                    setModelStorageStatus('0G storage complete');
+                    if (uploadResult?.rootHashes) {
+                      setMessages(prev => {
+                        const next = [...prev];
+                        if (assistantMessageIdRef.current !== null && next[assistantMessageIdRef.current]) {
+                          next[assistantMessageIdRef.current] = {
+                            ...next[assistantMessageIdRef.current],
+                            rootHashes: uploadResult.rootHashes,
+                          };
+                        }
+                        return next;
+                      });
+                    }
+                  })
                   .catch(err => setModelStorageStatus(err instanceof Error ? err.message : String(err)));
               }
             }
@@ -817,9 +844,17 @@ export default function App() {
     setTxSeqs(null);
     setRootHashesLoading(false);
     resetParams();
+    sidebarManuallyToggled.current = false;
+    setSidebarOpen(true);
   }, [messages, chatSessionId, auth.isConnected, stlObjectUrl, saveCurrentSession, resetParams]);
 
   const hasModel = messages.length > 0 || isGenerating;
+
+  // Auto-adjust sidebar: open on landing, closed on working page (unless user manually toggled)
+  useEffect(() => {
+    if (sidebarManuallyToggled.current) return;
+    setSidebarOpen(!hasModel);
+  }, [hasModel]);
 
   // Render
   return (
@@ -827,7 +862,7 @@ export default function App() {
       <Sidebar
         isOpen={sidebarOpen}
         onNewTask={handleNewTask}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        onToggleSidebar={() => { sidebarManuallyToggled.current = true; setSidebarOpen(!sidebarOpen); }}
         walletAddress={auth.address}
         isConnected={auth.isConnected}
         isAuthLoading={auth.isLoading}
@@ -865,7 +900,7 @@ export default function App() {
                     />
                     <div className="flex flex-wrap justify-center gap-2">
                       <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
-                        Powered by <span className="font-medium text-adam-blue">0G Compute</span>
+                        Powered by <span className="font-bold text-pink-400">0G Compute</span>
                       </span>
                       <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
                         CadQuery <span className="font-medium text-adam-blue">Python</span>
@@ -926,8 +961,13 @@ export default function App() {
                                   onCancel={() => setEditingMessageIndex(null)}
                                 />
                               )}
-                              {msg.role === 'assistant' && i === messages.length - 1 && (
-                                <RootHashes hashes={rootHashes} txSeqs={txSeqs} loading={rootHashesLoading} progress={uploadProgress} />
+                              {msg.role === 'assistant' && (
+                                <RootHashes
+                                  hashes={msg.rootHashes || (i === messages.length - 1 ? rootHashes : null)}
+                                  txSeqs={i === messages.length - 1 ? txSeqs : undefined}
+                                  loading={i === messages.length - 1 ? rootHashesLoading : false}
+                                  progress={i === messages.length - 1 ? uploadProgress : undefined}
+                                />
                               )}
                             </Fragment>
                           )
@@ -1072,7 +1112,7 @@ export default function App() {
                               className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-adam-blue/50 bg-adam-blue/10 px-3 py-2 text-xs font-medium text-adam-blue transition-colors hover:bg-adam-blue/20 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Save className="h-3.5 w-3.5" />
-                              {isStoringIteration ? 'Starting 0G storage...' : 'Store this iteration'}
+                              {isStoringIteration ? <span>Starting <span className="text-pink-400 font-bold">0G</span> storage...</span> : 'Store this iteration'}
                             </button>
                           )}
                           {modelStorageStatus && (
@@ -1088,6 +1128,8 @@ export default function App() {
                         stepBase64={stepBase64}
                         exportFilename={exportFilename}
                         setExportFilename={setExportFilename}
+                        rootHashStl={rootHashes?.stl}
+                        rootHashStep={rootHashes?.step}
                       />
 
                       {currentCode && <CodeSection code={currentCode} />}

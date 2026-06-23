@@ -63,9 +63,6 @@ export function Sidebar({
         {isOpen ? (
           <>
             <button className="flex items-center gap-2.5 group" onClick={onNewTask}>
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-adam-blue to-adam-blue/60 flex items-center justify-center shadow-lg shadow-adam-blue/20">
-                <span className="text-[10px] font-bold text-white">C</span>
-              </div>
               <span className="text-sm font-semibold text-adam-text-primary tracking-tight group-hover:text-adam-blue transition-colors">Chamfer AI</span>
             </button>
             <button
