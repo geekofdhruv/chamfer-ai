@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Search } from 'lucide-react';
 import { WorkflowTimeline } from './WorkflowTimeline';
 import { NutIcon } from '@/components/hardware/NutIcon';
 import type { WorkflowStep } from '@/types';
