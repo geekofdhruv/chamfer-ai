@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Check, Loader2, Hash } from 'lucide-react';
+import { Copy, Check, Loader2, Hash, ExternalLink } from 'lucide-react';
 
 export interface RootHashData {
   code?: string;
@@ -13,6 +13,8 @@ interface RootHashesProps {
   hashes: RootHashData | null;
   loading: boolean;
 }
+
+const EXPLORER_BASE = 'https://scan-testnet.0g.ai/file/';
 
 const LABELS: { key: keyof RootHashData; label: string }[] = [
   { key: 'code', label: 'Code' },
@@ -37,18 +39,29 @@ function HashRow({ label, hash }: { label: string; hash: string }) {
   };
 
   return (
-    <div className="flex items-center justify-between gap-2 px-3 py-1.5">
+    <div className="flex items-center justify-between gap-2 px-3 py-1.5 group/row">
       <span className="text-[10px] text-adam-text-tertiary uppercase tracking-wider w-12 shrink-0">{label}</span>
       <span className="text-[10px] font-mono text-adam-text-secondary truncate flex-1" title={hash}>
         {truncateHash(hash)}
       </span>
-      <button
-        onClick={copy}
-        className="p-1 rounded hover:bg-white/5 text-adam-text-tertiary hover:text-adam-blue transition-colors shrink-0"
-        title="Copy full hash"
-      >
-        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-      </button>
+      <div className="flex items-center gap-0.5 shrink-0">
+        <a
+          href={`${EXPLORER_BASE}${hash}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-1 rounded hover:bg-white/5 text-adam-text-tertiary hover:text-adam-blue transition-colors"
+          title="View on 0G Explorer"
+        >
+          <ExternalLink className="h-3 w-3" />
+        </a>
+        <button
+          onClick={copy}
+          className="p-1 rounded hover:bg-white/5 text-adam-text-tertiary hover:text-adam-blue transition-colors"
+          title="Copy full hash"
+        >
+          {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+        </button>
+      </div>
     </div>
   );
 }
