@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { API_URL } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-import { Eye, Zap, Brain, Cpu, X } from 'lucide-react';
+import { Eye, ChevronDown } from 'lucide-react';
 
 interface ProviderInfo {
   id: string;
@@ -18,11 +19,46 @@ interface ProviderSelectorProps {
   requireVision?: boolean;
 }
 
+function getProviderDescription(providerId: string, providerName: string): string {
+  const id = providerId.toLowerCase();
+  const name = providerName.toLowerCase();
+  if (id.includes('gemini') || name.includes('gemini') || id.includes('google')) {
+    return 'Latest Google model with excellent multi-modal capabilities';
+  }
+  if (id.includes('claude') || name.includes('claude') || id.includes('anthropic')) {
+    return 'Most powerful Anthropic model for complex reasoning';
+  }
+  if (id.includes('gpt') || name.includes('gpt') || id.includes('openai')) {
+    return 'Latest OpenAI model for reliable CAD generation';
+  }
+  if (id.includes('glm') || name.includes('glm')) {
+    return 'Z.AI model with strong agentic coding and reasoning';
+  }
+  if (id.includes('0g')) {
+    return '0G custom model optimized for speed and structure';
+  }
+  if (id.includes('mimo')) {
+    return 'MiMo core model with high-context reasoning';
+  }
+  if (id.includes('deepseek')) {
+    return 'Most powerful reasoning model for complex CAD operations';
+  }
+  if (id.includes('qwen')) {
+    return 'Qwen model with excellent multi-lingual and vision capabilities';
+  }
+  if (id.includes('groq') || id.includes('llama')) {
+    return 'Groq Llama model optimized for ultra-fast generation';
+  }
+  return 'Advanced AI model optimized for CAD generation';
+}
+
 export function ProviderSelector({ selected, onSelect, requireVision = false }: ProviderSelectorProps) {
   const [open, setOpen] = useState(false);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
 
   useEffect(() => {
     fetch(`${API_URL}/api/providers`)
@@ -59,6 +95,24 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [open]);
 
+  useEffect(() => {
+    if (open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const dropdownWidth = 290;
+      const spaceRight = window.innerWidth - rect.right;
+      const spaceLeft = rect.left;
+      const pos: { top: number; left?: number; right?: number } = { top: rect.top - 8 };
+      if (spaceRight >= dropdownWidth + 16) {
+        pos.left = rect.left;
+      } else if (spaceLeft >= dropdownWidth + 16) {
+        pos.right = window.innerWidth - rect.right;
+      } else {
+        pos.left = Math.max(8, rect.right - dropdownWidth);
+      }
+      setDropdownPos(pos);
+    }
+  }, [open]);
+
   if (loading) {
     return (
       <span className="text-[11px] text-adam-text-tertiary">Loading…</span>
@@ -68,51 +122,67 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
   return (
     <div ref={containerRef} className="relative">
       <button
+        ref={buttonRef}
         onClick={() => setOpen(!open)}
         className={cn(
-          'h-8 flex items-center gap-1.5 rounded-xl px-3 text-[11px] transition-all border font-medium shrink-0',
+          'h-8 flex items-center gap-1.5 bg-transparent text-xs transition-all font-normal shrink-0 outline-none',
           open
-            ? 'bg-adam-blue/15 text-adam-blue border-adam-blue/30 shadow-[0_0_10px_rgba(0,166,255,0.1)]'
-            : 'bg-adam-neutral-800/60 text-adam-text-tertiary border-white/[0.06] hover:bg-adam-neutral-700/60 hover:text-adam-text-secondary'
+            ? 'text-white'
+            : 'text-neutral-400 hover:text-white'
         )}
       >
-        <span className="font-semibold">{selectedProvider?.name?.split(' (')[0] || 'Model'}</span>
-        {selectedProvider?.supportsVision && <Eye className="w-3.5 h-3.5 text-adam-blue/70" />}
+        <span>{selectedProvider?.name?.split(' (')[0] || 'Model'}</span>
+        <ChevronDown className={cn(
+          "w-3.5 h-3.5 transition-transform duration-200 opacity-70",
+          open && "rotate-180"
+        )} />
       </button>
 
-      {open && (
-        <div className="absolute bottom-full left-0 mb-1 w-72 max-h-72 overflow-y-auto rounded-2xl border border-adam-neutral-700 bg-adam-background-2 p-1.5 shadow-lg z-50">
+      {open && createPortal(
+        <div
+          className="fixed w-[290px] max-h-[340px] overflow-y-auto rounded-2xl border border-[#2d2e2f]/90 bg-[#1e1e1f] p-1.5 shadow-2xl z-[9999] chat-scroll"
+          style={{
+            top: dropdownPos.top + 'px',
+            transform: 'translateY(-100%)',
+            ...(dropdownPos.left !== undefined ? { left: dropdownPos.left + 'px' } : {}),
+            ...(dropdownPos.right !== undefined ? { right: dropdownPos.right + 'px' } : {}),
+          }}
+        >
           {providers.map(p => (
             <button
               key={p.id}
               onClick={() => { onSelect(p.id); setOpen(false); }}
               className={cn(
-                'flex flex-col w-full items-start rounded-xl px-3 py-2 text-left transition-colors hover:bg-adam-neutral-800',
-                selected === p.id && 'bg-adam-neutral-800/60'
+                'flex flex-col w-full items-start rounded-xl px-4 py-3 text-left transition-colors duration-150 outline-none',
+                selected === p.id
+                  ? 'bg-[#292a2b]'
+                  : 'hover:bg-[#2c2d2e]/80'
               )}
             >
               <div className="flex items-center justify-between w-full">
-                <span className="text-sm text-adam-text-primary font-medium">{p.name}</span>
+                <span className="text-[13px] text-white font-semibold">{p.name}</span>
                 <div className="flex items-center gap-1">
                   {p.supportsVision && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-adam-blue/70">
+                    <span className="flex items-center gap-0.5 text-[10px] text-blue-400/80 font-medium">
                       <Eye className="w-3 h-3" /> Vision
                     </span>
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] text-adam-text-tertiary/60 font-mono">{p.model}</span>
-                {p.maxContextTokens && (
-                  <span className="text-[10px] text-adam-text-tertiary/40">
-                    {p.maxContextTokens >= 1000 ? `${(p.maxContextTokens/1000).toFixed(0)}K` : p.maxContextTokens} ctx
-                  </span>
-                )}
-              </div>
+              <p className="text-[11.5px] text-[#9ca3af] mt-0.5 leading-relaxed font-normal">
+                {getProviderDescription(p.id, p.name)}
+              </p>
+              {p.maxContextTokens && (
+                <div className="text-[9px] text-[#9ca3af]/40 mt-1 font-mono">
+                  {p.maxContextTokens >= 1000 ? `${(p.maxContextTokens/1000).toFixed(0)}K` : p.maxContextTokens} ctx
+                </div>
+              )}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 }
+

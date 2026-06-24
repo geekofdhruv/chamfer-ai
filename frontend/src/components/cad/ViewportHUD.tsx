@@ -24,7 +24,7 @@ export function ViewportHUD({
   return (
     <>
       {/* ─── Top-right: ViewCube + XYZ legend ─── */}
-      <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5 pointer-events-none">
+      <div className="absolute top-14 right-3 flex flex-col items-end gap-1.5 pointer-events-none">
         <div className="glass-hud pointer-events-auto select-none p-1.5 flex flex-col items-center gap-1.5 w-[108px]">
           {/* SVG 3D Isometric View Cube */}
           <svg viewBox="0 0 96 88" width="96" height="88" className="block select-none">

@@ -188,7 +188,6 @@ export function getMaxContextTokens(providerId: string): number {
   const budgets: Record<string, number> = {
     'mimo': 100000,
     'mimo-pro': 100000,
-    'mimo-flash': 100000,
     '0g': 40000,
     'groq': 6000,
     'groq-vision': 6000,

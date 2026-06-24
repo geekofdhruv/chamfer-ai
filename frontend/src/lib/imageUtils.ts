@@ -66,3 +66,66 @@ export function getMimeTypeFromDataUrl(dataUrl: string): string {
   const match = dataUrl.match(/^data:([^;]+);base64,/);
   return match?.[1] || 'image/png';
 }
+
+/**
+ * Loads an image, detects background color from the top-left pixel,
+ * keys it out to transparent using a canvas, and returns a data URL.
+ */
+export function makeLogoTransparent(imgUrl: string, callback: (transparentUrl: string) => void) {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      callback(imgUrl);
+      return;
+    }
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+
+    if (data.length < 4) {
+      callback(imgUrl);
+      return;
+    }
+
+    // Read top-left pixel color as background color reference
+    const bgR = data[0];
+    const bgG = data[1];
+    const bgB = data[2];
+    const bgA = data[3];
+
+    // If it's already transparent, skip keying
+    if (bgA < 50) {
+      callback(imgUrl);
+      return;
+    }
+
+    // Replace pixels that are very close to the background color with transparent
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      
+      const dist = Math.sqrt(
+        Math.pow(r - bgR, 2) +
+        Math.pow(g - bgG, 2) +
+        Math.pow(b - bgB, 2)
+      );
+
+      if (dist < 40) {
+        data[i + 3] = 0;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    callback(canvas.toDataURL('image/png'));
+  };
+  img.onerror = () => {
+    callback(imgUrl);
+  };
+  img.src = imgUrl;
+}
+

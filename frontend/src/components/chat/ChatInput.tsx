@@ -114,8 +114,7 @@ export function ChatInput({
       )}
 
       <div className="flex items-center justify-between px-3 pb-2.5">
-        <div className="flex items-center gap-2 flex-1 max-w-[300px]">
-          <ProviderSelector selected={provider} onSelect={setProvider} requireVision={images.length > 0} />
+        <div className="flex items-center gap-2">
           {providerSupportsVision && (
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -139,7 +138,8 @@ export function ChatInput({
             onChange={handleFileChange}
           />
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          <ProviderSelector selected={provider} onSelect={setProvider} requireVision={images.length > 0} />
           <button
             onClick={() => setReasoningEnabled(!reasoningEnabled)}
             className={cn(

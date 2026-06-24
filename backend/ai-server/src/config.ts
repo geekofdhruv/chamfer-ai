@@ -18,7 +18,7 @@ export const config = {
     '0g': {
       baseUrl: 'https://router-api.0g.ai/v1',
       model: '0GM-1.0-35B-A3B',
-      name: '0G Compute (0GM-1.0-35B-A3B)',
+      name: '0GM-1.0-35B-A3B',
       apiKey: process.env.OG_API_KEY || '',
       supportsVision: true,
       maxTokens: 4096,
@@ -27,7 +27,7 @@ export const config = {
     'mimo': {
       baseUrl: 'https://api.xiaomimimo.com/v1',
       model: 'mimo-v2.5',
-      name: 'MiMo 2.5 (Omni Series)',
+      name: 'MiMo 2.5',
       apiKey: process.env.MIMO_API_KEY || '',
       supportsVision: true,
       maxTokens: 8192,
@@ -36,30 +36,13 @@ export const config = {
     'mimo-pro': {
       baseUrl: 'https://api.xiaomimimo.com/v1',
       model: 'mimo-v2.5-pro',
-      name: 'MiMo 2.5 Pro (Pro Series)',
+      name: 'MiMo 2.5 Pro',
       apiKey: process.env.MIMO_API_KEY || '',
       supportsVision: false,
       maxTokens: 8192,
       maxContextTokens: 100000,
     },
-    'mimo-omni': {
-      baseUrl: 'https://api.xiaomimimo.com/v1',
-      model: 'mimo-v2-omni',
-      name: 'MiMo 2 Omni (Omni Series)',
-      apiKey: process.env.MIMO_API_KEY || '',
-      supportsVision: true,
-      maxTokens: 8192,
-      maxContextTokens: 100000,
-    },
-    'mimo-flash': {
-      baseUrl: 'https://api.xiaomimimo.com/v1',
-      model: 'mimo-v2-flash',
-      name: 'MiMo 2 Flash (Flash Series)',
-      apiKey: process.env.MIMO_API_KEY || '',
-      supportsVision: false,
-      maxTokens: 4096,
-      maxContextTokens: 100000,
-    },
+
     'deepseek-v4-flash': {
       baseUrl: FIREWORKS_BASE,
       model: 'accounts/fireworks/models/deepseek-v4-flash',
@@ -98,7 +81,7 @@ export const config = {
     'qwen3p7-plus': {
       baseUrl: FIREWORKS_BASE,
       model: 'accounts/fireworks/models/qwen3p7-plus',
-      name: 'Qwen 3.7 Plus (Fireworks)',
+      name: 'Qwen 3.7 Plus',
       apiKey: fwKey,
       supportsVision: true,
       maxTokens: 4096,
@@ -107,7 +90,7 @@ export const config = {
     'kimi-k2p6': {
       baseUrl: FIREWORKS_BASE,
       model: 'accounts/fireworks/models/kimi-k2p6',
-      name: 'Kimi K2.6 (Fireworks)',
+      name: 'Kimi K2.6',
       apiKey: fwKey,
       supportsVision: true,
       maxTokens: 4096,
@@ -116,7 +99,7 @@ export const config = {
     'groq': {
       baseUrl: 'https://api.groq.com/openai/v1',
       model: 'qwen/qwen3-32b',
-      name: 'Groq Qwen3-32B',
+      name: 'Qwen3-32B',
       apiKey: process.env.GROQ_API_KEY || '',
       supportsVision: false,
       maxTokens: 4096,
@@ -125,7 +108,7 @@ export const config = {
     'groq-vision': {
       baseUrl: 'https://api.groq.com/openai/v1',
       model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-      name: 'Groq Llama 4 Scout',
+      name: 'Llama 4 Scout',
       apiKey: process.env.GROQ_API_KEY || '',
       supportsVision: true,
       maxTokens: 4096,

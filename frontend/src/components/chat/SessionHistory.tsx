@@ -23,26 +23,31 @@ export function SessionHistory({ sessions, activeSessionId, onSelect, compact }:
   if (sessions.length === 0) return null;
 
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-1">
       {!compact && (
-        <div className="px-3 py-2 font-title font-bold text-adam-text-tertiary uppercase tracking-widest">
+        <div className="px-3 py-2 text-[11px] font-bold text-adam-neutral-500 uppercase tracking-wider">
           Chat History
         </div>
       )}
-      {sessions.slice(0, compact ? 5 : 20).map(s => (
-        <button
-          key={s.id}
-          onClick={() => onSelect(s.id)}
-          className={`w-full text-left px-3 py-1.5 rounded-lg text-xs transition-colors truncate ${
-            activeSessionId === s.id
-              ? 'bg-adam-blue/15 text-adam-blue font-medium'
-              : 'text-adam-text-secondary hover:bg-white/[0.03] hover:text-adam-text-primary'
-          }`}
-        >
-          <div className="truncate">{s.title}</div>
-          <div className="text-[9px] text-adam-text-tertiary mt-0.5">{timeAgo(s.updated_at || s.created_at)}</div>
-        </button>
-      ))}
+      <ul className="flex list-none flex-col gap-1 px-1">
+        {sessions.slice(0, compact ? 5 : 20).map(s => (
+          <li key={s.id}>
+            <button
+              onClick={() => onSelect(s.id)}
+              className={`w-full text-left px-3 py-2 rounded-md text-xs transition-colors duration-200 ease-in-out truncate block ${
+                activeSessionId === s.id
+                  ? 'bg-adam-neutral-950 text-adam-neutral-10 font-semibold'
+                  : 'text-adam-neutral-400 hover:bg-adam-neutral-950 hover:text-adam-neutral-10'
+              }`}
+            >
+              <div className="truncate text-ellipsis">{s.title}</div>
+              <div className={`text-[9px] mt-0.5 ${
+                activeSessionId === s.id ? 'text-adam-neutral-400' : 'text-adam-neutral-500'
+              }`}>{timeAgo(s.updated_at || s.created_at)}</div>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

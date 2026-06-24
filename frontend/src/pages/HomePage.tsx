@@ -433,10 +433,11 @@ export function HomePage() {
             {!hasModel ? (
               /* ─── Home prompt screen ─── */
               <LampContainer className="flex-1 min-h-0">
-                <h1 className="mb-8 text-center text-2xl font-medium text-adam-text-primary md:text-3xl">
-                  What can Chamfer AI help you build today?
-                </h1>
-                <GlowCard glowColor="blue" customSize className="w-full max-w-2xl">
+                <div className="flex flex-col items-center justify-center flex-1 w-full min-h-0 px-4">
+                  <h1 className="mb-5 text-center text-2xl font-semibold text-adam-text-primary md:text-3xl px-4 select-none">
+                    What Chamfer AI can do for you
+                  </h1>
+                  <GlowCard glowColor="blue" customSize className="w-full max-w-2xl">
                   <div className="space-y-4">
                     <ChatInput
                       prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate}
@@ -446,14 +447,7 @@ export function HomePage() {
                       reasoningEnabled={reasoningEnabled} setReasoningEnabled={setReasoningEnabled}
                       showAnimatedPlaceholder
                     />
-                    <div className="flex flex-wrap justify-center gap-2">
-                      <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
-                        Powered by <span className="font-bold text-pink-400">0G Compute</span>
-                      </span>
-                      <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
-                        CadQuery <span className="font-medium text-adam-blue">Python</span>
-                      </span>
-                    </div>
+                    {/* Powered by / CadQuery pills removed */}
                   </div>
                 </GlowCard>
               </LampContainer>

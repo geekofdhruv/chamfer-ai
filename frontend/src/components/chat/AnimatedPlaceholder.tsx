@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PLACEHOLDER_PROMPTS } from '@/lib/constants';
 
-export function AnimatedPlaceholder({ visible }: { visible: boolean }) {
+export function AnimatedPlaceholder({ visible, className }: { visible: boolean; className?: string }) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -16,7 +16,7 @@ export function AnimatedPlaceholder({ visible }: { visible: boolean }) {
   if (!visible) return null;
 
   return (
-    <div className="absolute left-4 top-4 pointer-events-none select-none">
+    <div className={className || "absolute left-4 top-4 pointer-events-none select-none"}>
       <AnimatePresence mode="wait">
         <motion.span
           key={index}
