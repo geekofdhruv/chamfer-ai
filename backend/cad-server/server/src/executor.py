@@ -30,7 +30,9 @@ def _get_work_dir() -> Path:
         return job_dir
     # Fallback for bare-metal (not in Docker)
     import tempfile
-    return Path(tempfile.mkdtemp(prefix="chamfer_ai_"))
+    work = Path(tempfile.mkdtemp(prefix="chamfer_ai_"))
+    os.chmod(work, 0o777)
+    return work
 
 def execute_cadquery(
     code: str,
@@ -83,7 +85,7 @@ def execute_cadquery(
                 volumes=volumes,
                 environment={"JOB_DIR": job_dir_env, "XDG_CACHE_HOME": "/tmp"},
                 network_mode="none",
-                mem_limit="2g",
+                mem_limit="512m",
                 cpu_count=1,
                 read_only=True,
                 tmpfs={"/tmp": "size=128m"},
